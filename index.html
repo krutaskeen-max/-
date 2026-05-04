@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบบันทึกข้อมูลนักเรียน</title>
+    
+    <!-- Tailwind CSS สำหรับการตกแต่งแบบรวดเร็วและสวยงาม -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel สำหรับแปลง JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Font Awesome สำหรับไอคอน -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts (Sarabun) -->
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background-color: #f0f8ff; 
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.4s ease-in-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .text-brand-blue { color: #0284c7; }
+        .bg-brand-blue { background-color: #0284c7; }
+        .hover-bg-brand-blue:hover { background-color: #0369a1; }
+        
+        .text-brand-orange { color: #f97316; }
+        .bg-brand-orange { background-color: #f97316; }
+        .hover-bg-brand-orange:hover { background-color: #ea580c; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 md:p-8">
+
+    <div id="root" class="w-full max-w-3xl"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbzyFd2PHIHV9ctddwktKKuqjnQF-Wr12zHWuczWpXNmWg8FzYzCTALx48RIdSnPWQMw/exec";
+
+        const App = () => {
+            const [step, setStep] = useState(1);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [isSuccess, setIsSuccess] = useState(false);
+            const [showFinalPopup, setShowFinalPopup] = useState(false); 
+            const [alertMsg, setAlertMsg] = useState(''); 
+            const [duplicateAlert, setDuplicateAlert] = useState(null); 
+
+            // เปลี่ยนเป็น v10 เพื่อบังคับล้าง Cache ของเก่าและเตรียมรับความเร็วใหม่
+            const getCachedData = () => {
+                try {
+                    const cached = sessionStorage.getItem('schoolAppCache_v10');
+                    if (cached) {
+                        return JSON.parse(cached);
+                    }
+                } catch(e) {}
+                return null; 
+            };
+
+            const cachedInitData = getCachedData();
+
+            const [initialData, setInitialData] = useState(cachedInitData || { 
+                students: [], settings: {}, provinces: [], teachers: [],
+                schoolName: 'ระบบขึ้นทะเบียนนักเรียน', schoolLogo: ''
+            });
+            
+            const [isLoadingData, setIsLoadingData] = useState(!cachedInitData);
+
+            const [formData, setFormData] = useState({
+                studentCode: '', nationalId: '', fullName: '', classLevel: '', room: '', 
+                religion: '', religionOther: '', studentTel: '', advisor: '',
+                dobDay: '', dobMonth: '', dobYear: '', age: '', program: '',
+                parentTitle: '', parentTitleOther: '', parentFirstName: '', parentLastName: '',
+                parentRelation: '', parentTel: '',
+                parentUnemployed: false, parentOccupation: '', parentWorkplace: '',
+                addrNo: '', addrMoo: '', addrSub: '', addrDist: '', addrProv: '', addrZip: ''
+            });
+
+            React.useEffect(() => {
+                // ฟังก์ชันดึงโลโก้แบบด่วนพิเศษ (แสดงผลใน 0.5 วินาที)
+                const fetchLogoFast = async () => {
+                    try {
+                        const res = await fetch(`${GAS_URL}?action=getAppInfo`);
+                        const textRes = await res.text();
+                        
+                        // ป้องกัน Error กรณีที่ Google Apps Script ยังเป็นเวอร์ชันเก่า
+                        if (textRes.includes("System API Online")) return;
+                        
+                        const result = JSON.parse(textRes);
+                        if (result.status === 'success') {
+                            let rawLogo = result.schoolLogo || '';
+                            rawLogo = rawLogo.replace(/[\r\n\t\s]+/g, ''); 
+                            if (rawLogo.includes('drive.google.com')) {
+                                const matchId = rawLogo.match(/[-\w]{25,}/); 
+                                if (matchId && matchId[0]) {
+                                    rawLogo = `https://lh3.googleusercontent.com/d/${matchId[0]}`;
+                                }
+                            }
+                            // อัปเดตเฉพาะโลโก้และชื่อโรงเรียนทันที
+                            setInitialData(prev => ({ 
+                                ...prev, 
+                                schoolName: result.schoolName || prev.schoolName, 
+                                schoolLogo: rawLogo 
+                            }));
+                        }
+                    } catch(e) {
+                        console.warn("Fast logo load skipped (waiting for full data)");
+                    }
+                };
+
+                const fetchFromGAS = async (isSilent = false) => {
+                    if (!isSilent) setIsLoadingData(true);
+                    try {
+                        const res = await fetch(`${GAS_URL}?action=getInitialData`);
+                        const textRes = await res.text();
+                        
+                        if (textRes.includes("System API Online")) {
+                            throw new Error("ยังไม่ได้อัปเดตสคริปต์: กรุณากดปุ่ม Deploy -> New Deployment ในหน้า Google Apps Script แล้วนำลิงก์ใหม่มาอัปเดตใน HTML ครับ");
+                        }
+                        
+                        const result = JSON.parse(textRes);
+                        if (result.status === 'success') {
+                            
+                            let rawLogo = result.schoolLogo || '';
+                            rawLogo = rawLogo.replace(/[\r\n\t\s]+/g, ''); 
+                            
+                            if (rawLogo.includes('drive.google.com')) {
+                                const matchId = rawLogo.match(/[-\w]{25,}/); 
+                                if (matchId && matchId[0]) {
+                                    rawLogo = `https://lh3.googleusercontent.com/d/${matchId[0]}`;
+                                }
+                            }
+
+                            const newData = { 
+                                students: result.students || [], 
+                                settings: result.settings || {},
+                                provinces: result.provinces || [],
+                                teachers: result.teachers || [],
+                                schoolName: result.schoolName || 'ระบบขึ้นทะเบียนนักเรียน',
+                                schoolLogo: rawLogo
+                            };
+                            setInitialData(newData);
+                            sessionStorage.setItem('schoolAppCache_v10', JSON.stringify(newData));
+                        }
+                    } catch (e) {
+                        console.error("Failed to load initial data", e);
+                        if (e.message.includes("Deploy")) {
+                            setAlertMsg(e.message);
+                        }
+                    } finally {
+                        if (!isSilent) setIsLoadingData(false);
+                    }
+                };
+
+                if (!cachedInitData) {
+                    fetchLogoFast(); // เรียกโลโก้ก่อนทันที (โผล่ตอนหมุนสปินเนอร์)
+                    fetchFromGAS(false); // เรียกข้อมูลหนักตามหลัง
+                } else {
+                    fetchFromGAS(true);
+                }
+            }, []);
+
+            React.useEffect(() => {
+                if (formData.classLevel && formData.room && initialData.teachers.length > 0) {
+                    const shortClass = formData.classLevel.replace('มัธยมศึกษาปีที่ ', 'ม.');
+                    const roomStr = String(formData.room);
+                    
+                    const matchedTeachers = initialData.teachers.filter(t => 
+                        t.classLevel === shortClass && String(t.room) === roomStr
+                    );
+                    
+                    const advisorNames = matchedTeachers.map(t => t.name).join(', ');
+                    
+                    if (formData.advisor !== advisorNames) {
+                        setFormData(prev => ({ ...prev, advisor: advisorNames }));
+                    }
+                } else if (formData.advisor !== '') {
+                    setFormData(prev => ({ ...prev, advisor: '' }));
+                }
+            }, [formData.classLevel, formData.room, initialData.teachers]);
+
+            const availablePrograms = React.useMemo(() => {
+                const classKey = formData.classLevel;
+                const roomKey = formData.room ? `${classKey}/${formData.room}` : '';
+                let options = [];
+                
+                let planStr = '';
+                const findPlans = (obj) => {
+                    if (!obj) return '';
+                    if (obj.learning_plans && typeof obj.learning_plans === 'string') return obj.learning_plans;
+                    if (typeof obj === 'object') {
+                        for (let k in obj) {
+                            if (obj[k] && typeof obj[k] === 'object') {
+                                let found = findPlans(obj[k]);
+                                if (found) return found;
+                            }
+                        }
+                    }
+                    return '';
+                };
+                
+                planStr = findPlans(initialData.settings);
+
+                if (planStr) {
+                    const lines = planStr.split('\n');
+                    lines.forEach(line => {
+                        const parts = line.split(':');
+                        if (parts.length >= 2) {
+                            const planName = parts[0].trim();
+                            const rooms = parts.slice(1).join(':').split(',').map(r => r.trim());
+
+                            if (roomKey) {
+                                if (rooms.includes(roomKey)) options.push(planName);
+                            } else if (classKey) {
+                                if (rooms.some(r => r.startsWith(classKey + '/'))) {
+                                    if (!options.includes(planName)) options.push(planName);
+                                }
+                            }
+                        }
+                    });
+                }
+                return options;
+            }, [formData.classLevel, formData.room, initialData.settings]);
+
+            React.useEffect(() => {
+                if (formData.classLevel && formData.room) {
+                    if (availablePrograms.length === 1) {
+                        if (formData.program !== availablePrograms[0]) {
+                            setFormData(prev => ({ ...prev, program: availablePrograms[0] }));
+                        }
+                    } else if (availablePrograms.length > 1) {
+                        if (!availablePrograms.includes(formData.program)) {
+                            setFormData(prev => ({ ...prev, program: '' }));
+                        }
+                    } else {
+                         if (formData.program !== '') {
+                             setFormData(prev => ({ ...prev, program: '' }));
+                         }
+                    }
+                }
+            }, [availablePrograms, formData.classLevel, formData.room]);
+
+            const uniqueProvinces = React.useMemo(() => {
+                return [...new Set(initialData.provinces.map(p => p.prov))].filter(Boolean).sort();
+            }, [initialData.provinces]);
+
+            const availableDistricts = React.useMemo(() => {
+                if (!formData.addrProv) return [];
+                return [...new Set(initialData.provinces.filter(p => p.prov === formData.addrProv).map(p => p.dist))].filter(Boolean).sort();
+            }, [initialData.provinces, formData.addrProv]);
+
+            const availableSubs = React.useMemo(() => {
+                if (!formData.addrProv || !formData.addrDist) return [];
+                return [...new Set(initialData.provinces.filter(p => p.prov === formData.addrProv && p.dist === formData.addrDist).map(p => p.sub))].filter(Boolean).sort();
+            }, [initialData.provinces, formData.addrProv, formData.addrDist]);
+
+            const handleChange = (e) => {
+                const target = e.target;
+                const name = target.name;
+                const value = target.type === 'checkbox' ? target.checked : target.value;
+                let newForm = { ...formData, [name]: value };
+
+                if (name === 'classLevel' || name === 'room') {
+                    newForm.fullName = '';
+                    newForm.studentCode = '';
+                    newForm.program = '';
+                }
+                if (['dobDay', 'dobMonth', 'dobYear'].includes(name)) {
+                    newForm.age = calculateAge(newForm.dobDay, newForm.dobMonth, newForm.dobYear);
+                }
+                if (name === 'religion' && value !== 'อื่นๆ') {
+                    newForm.religionOther = '';
+                }
+                if (name === 'parentTitle' && value !== 'อื่นๆ') {
+                    newForm.parentTitleOther = '';
+                }
+                
+                if (name === 'parentUnemployed') {
+                    if (value) {
+                        newForm.parentOccupation = 'ไม่ได้ประกอบอาชีพ';
+                        newForm.parentWorkplace = '-';
+                    } else {
+                        newForm.parentOccupation = '';
+                        newForm.parentWorkplace = '';
+                    }
+                }
+
+                if (name === 'addrProv') {
+                    newForm.addrDist = '';
+                    newForm.addrSub = '';
+                    newForm.addrZip = '';
+                }
+                if (name === 'addrDist') {
+                    newForm.addrSub = '';
+                    newForm.addrZip = '';
+                }
+                if (name === 'addrSub' && newForm.addrProv && newForm.addrDist) {
+                    const match = initialData.provinces.find(p => p.prov === newForm.addrProv && p.dist === newForm.addrDist && p.sub === value);
+                    if (match) newForm.addrZip = match.zip;
+                }
+
+                setFormData(newForm);
+            };
+
+            const handleNationalIdChange = (e) => {
+                let val = e.target.value.replace(/\D/g, ''); 
+                if (val.length > 13) val = val.slice(0, 13);
+                let formatted = '';
+                for (let i = 0; i < val.length; i++) {
+                    if (i === 1 || i === 5 || i === 10 || i === 12) formatted += '-';
+                    formatted += val[i];
+                }
+                setFormData(prev => ({ ...prev, nationalId: formatted }));
+            };
+
+            const handlePhoneChange = (e, field) => {
+                let val = e.target.value.replace(/\D/g, '');
+                if (val.length > 10) val = val.slice(0, 10);
+                let formatted = '';
+                for (let i = 0; i < val.length; i++) {
+                    if (i === 3 || i === 6) formatted += '-';
+                    formatted += val[i];
+                }
+                setFormData(prev => ({ ...prev, [field]: formatted }));
+            };
+
+            const calculateAge = (day, month, yearBE) => {
+                if (!day || !month || !yearBE) return '';
+                const yearCE = parseInt(yearBE) - 543;
+                const dob = new Date(yearCE, parseInt(month) - 1, parseInt(day));
+                const today = new Date();
+                let age = today.getFullYear() - dob.getFullYear();
+                const m = today.getMonth() - dob.getMonth();
+                if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+                    age--;
+                }
+                return age >= 0 ? age : '';
+            };
+
+            const getMonthName = (m) => {
+                if(!m) return '';
+                const months = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+                const idx = parseInt(m, 10) - 1;
+                return (idx >= 0 && idx < 12) ? months[idx] : m;
+            };
+
+            const validateStep1 = () => {
+                if (!formData.classLevel) return "กรุณาเลือกระดับชั้น";
+                if (!formData.room) return "กรุณาเลือกห้องเรียน";
+                if (!formData.fullName) return "กรุณาเลือกชื่อ-นามสกุล นักเรียน";
+                if (!formData.studentCode) return "ไม่พบเลขประจำตัวนักเรียน (กรุณาเลือกชื่อใหม่อีกครั้ง)";
+                if (!formData.nationalId || formData.nationalId.length !== 17) return "กรุณากรอกเลขบัตรประจำตัวประชาชนให้ครบ 13 หลัก";
+                if (!formData.religion) return "กรุณาเลือกศาสนา";
+                if (formData.religion === 'อื่นๆ' && !formData.religionOther) return "กรุณาระบุศาสนาที่นับถือ";
+                if (!formData.studentTel || formData.studentTel.length !== 12) return "กรุณากรอกเบอร์โทรศัพท์นักเรียนให้ครบ 10 หลัก";
+                if (!formData.dobDay || !formData.dobMonth || !formData.dobYear) return "กรุณาระบุวัน/เดือน/ปีเกิดให้ครบถ้วน";
+                if (!formData.program) return "กรุณาเลือกแผนการเรียน";
+                return null; 
+            };
+
+            const validateStep2 = () => {
+                if (!formData.parentTitle) return "กรุณาเลือกคำนำหน้าชื่อผู้ปกครอง";
+                if (formData.parentTitle === 'อื่นๆ' && !formData.parentTitleOther) return "กรุณาระบุคำนำหน้าชื่อผู้ปกครอง";
+                if (!formData.parentFirstName) return "กรุณากรอกชื่อผู้ปกครอง";
+                if (!formData.parentLastName) return "กรุณากรอกนามสกุลผู้ปกครอง";
+                if (!formData.parentRelation) return "กรุณาเลือกความเกี่ยวข้องกับนักเรียน";
+                if (!formData.parentTel || formData.parentTel.length !== 12) return "กรุณากรอกเบอร์โทรศัพท์ติดต่อผู้ปกครองให้ครบ 10 หลัก";
+                if (!formData.parentUnemployed) {
+                    if (!formData.parentOccupation) return "กรุณากรอกอาชีพผู้ปกครอง (หรือติ๊กไม่ได้ประกอบอาชีพ)";
+                    if (!formData.parentWorkplace) return "กรุณากรอกสถานที่ทำงานผู้ปกครอง (หรือติ๊กไม่ได้ประกอบอาชีพ)";
+                }
+                return null;
+            };
+
+            const validateStep3 = () => {
+                if (!formData.addrNo) return "กรุณากรอกบ้านเลขที่ (ช่องแรกสุด)";
+                if (!formData.addrMoo) return "กรุณากรอกหมู่ที่ (หากไม่มีให้ใส่เครื่องหมาย -)";
+                if (!formData.addrProv) return "กรุณาเลือกหรือพิมพ์ชื่อจังหวัด";
+                if (!formData.addrDist) return "กรุณาเลือกหรือพิมพ์ชื่ออำเภอ/เขต";
+                if (!formData.addrSub) return "กรุณาเลือกหรือพิมพ์ชื่อตำบล/แขวง";
+                if (!formData.addrZip) return "ไม่พบรหัสไปรษณีย์ (กรุณาเลือกตำบลให้ถูกต้องระบบจะขึ้นให้อัตโนมัติ)";
+                return null;
+            };
+
+            const nextStep = () => {
+                let errorMsg = null;
+                if (step === 1) errorMsg = validateStep1();
+                if (step === 2) errorMsg = validateStep2();
+
+                if (errorMsg) {
+                    setAlertMsg(errorMsg);
+                    return; 
+                }
+                
+                setStep(prev => prev + 1);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+
+            const prevStep = () => {
+                setStep(prev => prev - 1);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+
+            const handleSubmit = async () => {
+                const errorMsg = validateStep3();
+                if (errorMsg) {
+                    setAlertMsg(errorMsg);
+                    return;
+                }
+
+                setIsSubmitting(true);
+                try {
+                    const fullAddress = [
+                        formData.addrNo ? `บ้านเลขที่ ${formData.addrNo}` : '',
+                        formData.addrMoo ? `หมู่ที่ ${formData.addrMoo}` : '',
+                        formData.addrSub ? `ต.${formData.addrSub}` : '',
+                        formData.addrDist ? `อ.${formData.addrDist}` : '',
+                        formData.addrProv ? `จ.${formData.addrProv}` : '',
+                        formData.addrZip || ''
+                    ].filter(Boolean).join(' ');
+
+                    const pTitle = formData.parentTitle === 'อื่นๆ' ? formData.parentTitleOther : formData.parentTitle;
+                    const parentFullName = `${pTitle}${formData.parentFirstName} ${formData.parentLastName}`.trim();
+
+                    const payload = { 
+                        ...formData, 
+                        address: fullAddress,
+                        parentName: parentFullName 
+                    };
+
+                    const response = await fetch(GAS_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/plain;charset=utf-8',
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    const result = await response.json();
+                    if(result.status === 'success') {
+                        sessionStorage.removeItem('schoolAppCache_v10');
+                        setIsSuccess(true);
+                    } else if (result.status === 'duplicate') {
+                        setDuplicateAlert({
+                            name: formData.fullName,
+                            date: result.date || 'ระบบได้บันทึกไปแล้ว'
+                        });
+                        setStep(1); 
+                    } else {
+                        setAlertMsg("เกิดข้อผิดพลาดในการบันทึก: " + result.message);
+                    }
+                } catch (error) {
+                    setAlertMsg("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง");
+                    console.error(error);
+                } finally {
+                    setIsSubmitting(false);
+                }
+            };
+
+            const Stepper = () => {
+                const steps = [
+                    { num: 1, title: 'ข้อมูลทั่วไป', icon: 'fa-user' },
+                    { num: 2, title: 'ผู้ปกครอง', icon: 'fa-users' },
+                    { num: 3, title: 'การติดต่อ', icon: 'fa-address-card' }
+                ];
+
+                return (
+                    <div className="flex justify-between items-center mb-8 relative">
+                        <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-200 -z-10 transform -translate-y-1/2 rounded"></div>
+                        <div className="absolute top-1/2 left-0 h-1 bg-brand-orange -z-10 transform -translate-y-1/2 rounded transition-all duration-300" 
+                             style={{ width: `${((step - 1) / (steps.length - 1)) * 100}%` }}></div>
+
+                        {steps.map((s, index) => {
+                            const isActive = step >= s.num;
+                            const isCurrent = step === s.num;
+                            return (
+                                <div key={s.num} className="flex flex-col items-center">
+                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold border-4 transition-all duration-300
+                                        ${isActive ? 'bg-brand-orange border-orange-100 text-white' : 'bg-white border-gray-200 text-gray-400'}
+                                        ${isCurrent ? 'shadow-lg shadow-orange-200 scale-110' : ''}
+                                    `}>
+                                        <i className={`fas ${s.icon}`}></i>
+                                    </div>
+                                    <span className={`mt-2 text-sm font-semibold ${isActive ? 'text-brand-orange' : 'text-gray-400'}`}>
+                                        {s.title}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                );
+            };
+
+            if (showFinalPopup) {
+                return (
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 text-center fade-in max-w-lg mx-auto border-t-8 border-green-500">
+                        <div className="w-24 h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                            <i className="fas fa-check text-5xl"></i>
+                        </div>
+                        <h2 className="text-2xl font-bold text-gray-800 mb-4">ข้อมูลได้รับการบันทึกเรียบร้อยแล้ว</h2>
+                        <p className="text-gray-600 font-medium leading-relaxed bg-gray-50 p-4 rounded-xl border border-gray-100 text-left">
+                            ระบบได้จัดเก็บข้อมูลของนักเรียนลงในฐานข้อมูลเสร็จสมบูรณ์<br/>
+                            <span className="text-red-500 text-sm mt-3 block font-bold text-center">
+                                <i className="fas fa-info-circle mr-1"></i> หากต้องการแก้ไขข้อมูลหลังจากนี้ ให้ติดต่อเจ้าหน้าที่
+                            </span>
+                        </p>
+                    </div>
+                );
+            }
+
+            if (isSuccess) {
+                const pTitle = formData.parentTitle === 'อื่นๆ' ? formData.parentTitleOther : formData.parentTitle;
+                const parentFullName = `${pTitle}${formData.parentFirstName} ${formData.parentLastName}`.trim();
+
+                return (
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-10 fade-in w-full max-w-3xl mx-auto">
+                        <div className="text-center mb-8">
+                            <div className="w-16 h-16 bg-blue-100 text-brand-blue rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i className="fas fa-search text-2xl"></i>
+                            </div>
+                            <h2 className="text-2xl font-bold text-brand-blue">ตรวจสอบความถูกต้องของข้อมูล</h2>
+                            <p className="text-gray-500 mt-1">กรุณาตรวจสอบรายละเอียด หากข้อมูลถูกต้องแล้ว ให้กดยืนยันด้านล่าง</p>
+                        </div>
+                        
+                        <div className="space-y-6 text-gray-700">
+                            <div className="bg-blue-50 p-5 rounded-xl border border-blue-100 shadow-sm">
+                                <h3 className="font-bold text-brand-blue mb-3 text-lg border-b border-blue-200 pb-2"><i className="fas fa-user mr-2"></i>ส่วนที่ 1: ข้อมูลนักเรียน</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 gap-x-4 text-sm">
+                                    <p><span className="font-bold text-gray-500">ชื่อ-นามสกุล:</span> {formData.fullName}</p>
+                                    <p><span className="font-bold text-gray-500">เลขประจำตัว:</span> {formData.studentCode}</p>
+                                    <p><span className="font-bold text-gray-500">ระดับชั้น:</span> {formData.classLevel} / {formData.room}</p>
+                                    <p><span className="font-bold text-gray-500">แผนการเรียน:</span> {formData.program}</p>
+                                    <p className="md:col-span-2"><span className="font-bold text-gray-500">ครูที่ปรึกษา:</span> {formData.advisor}</p>
+                                    <p><span className="font-bold text-gray-500">เลขบัตร ปชช.:</span> {formData.nationalId}</p>
+                                    <p><span className="font-bold text-gray-500">ศาสนา:</span> {formData.religion === 'อื่นๆ' ? formData.religionOther : formData.religion}</p>
+                                    <p><span className="font-bold text-gray-500">เบอร์โทรนักเรียน:</span> {formData.studentTel}</p>
+                                    <p className="md:col-span-2"><span className="font-bold text-gray-500">วันเกิด:</span> {formData.dobDay} {getMonthName(formData.dobMonth)} {formData.dobYear} <span className="text-brand-orange font-bold">(อายุ {formData.age} ปี)</span></p>
+                                </div>
+                            </div>
+
+                            <div className="bg-orange-50 p-5 rounded-xl border border-orange-100 shadow-sm">
+                                <h3 className="font-bold text-brand-orange mb-3 text-lg border-b border-orange-200 pb-2"><i className="fas fa-users mr-2"></i>ส่วนที่ 2: ข้อมูลผู้ปกครอง</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 gap-x-4 text-sm">
+                                    <p><span className="font-bold text-gray-500">ชื่อ-นามสกุล:</span> {parentFullName}</p>
+                                    <p><span className="font-bold text-gray-500">ความเกี่ยวข้อง:</span> {formData.parentRelation}</p>
+                                    <p><span className="font-bold text-gray-500">เบอร์โทรติดต่อ:</span> {formData.parentTel}</p>
+                                    <p><span className="font-bold text-gray-500">อาชีพ:</span> {formData.parentOccupation}</p>
+                                    <p><span className="font-bold text-gray-500">สถานที่ทำงาน:</span> {formData.parentWorkplace}</p>
+                                </div>
+                            </div>
+
+                            <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 shadow-sm">
+                                <h3 className="font-bold text-gray-700 mb-3 text-lg border-b border-gray-200 pb-2"><i className="fas fa-address-card mr-2"></i>ส่วนที่ 3: ที่อยู่ปัจจุบัน</h3>
+                                <div className="text-sm">
+                                    <p className="leading-relaxed"><span className="font-bold text-gray-500">ที่อยู่:</span> {[
+                                        formData.addrNo ? `บ้านเลขที่ ${formData.addrNo}` : '',
+                                        formData.addrMoo ? `หมู่ที่ ${formData.addrMoo}` : '',
+                                        formData.addrSub ? `ต.${formData.addrSub}` : '',
+                                        formData.addrDist ? `อ.${formData.addrDist}` : '',
+                                        formData.addrProv ? `จ.${formData.addrProv}` : '',
+                                        formData.addrZip || ''
+                                    ].filter(Boolean).join(' ')}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 flex flex-col sm:flex-row justify-center gap-4">
+                            <button onClick={() => { setIsSuccess(false); setStep(1); }} className="bg-white border-2 border-gray-300 hover:bg-gray-50 text-gray-700 px-6 py-3 rounded-xl font-bold transition flex items-center justify-center">
+                                <i className="fas fa-edit mr-2"></i> กลับไปแก้ไขข้อมูล
+                            </button>
+                            <button onClick={() => setShowFinalPopup(true)} className="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-xl font-bold shadow-md shadow-green-200 transition flex items-center justify-center">
+                                <i className="fas fa-check-circle mr-2"></i> ยืนยันข้อมูลถูกต้อง
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="bg-white rounded-3xl shadow-2xl overflow-hidden relative">
+                    
+                    {(isLoadingData || isSubmitting) && (
+                        <div className="absolute inset-0 bg-white/90 z-50 flex flex-col items-center justify-center backdrop-blur-sm animate-[fadeIn_0.3s_ease-out]">
+                            <div className="relative w-36 h-36 mb-6 flex items-center justify-center">
+                                <div className="absolute inset-0 rounded-full border-[6px] border-blue-100"></div>
+                                <div className="absolute inset-0 rounded-full border-[6px] border-blue-600 border-t-orange-500 animate-spin"></div>
+                                
+                                <div className="absolute inset-2 bg-white rounded-full flex items-center justify-center shadow-lg p-2 z-10 overflow-hidden">
+                                    {initialData.schoolLogo ? (
+                                        <img src={initialData.schoolLogo} alt="Loading..." className="w-full h-full object-contain" />
+                                    ) : (
+                                        <i className="fas fa-school text-5xl text-blue-600"></i>
+                                    )}
+                                </div>
+                            </div>
+                            <h3 className="text-2xl font-bold text-blue-800 mb-2">กรุณารอสักครู่</h3>
+                            <p className="text-gray-600 font-medium animate-pulse text-lg">
+                                {isSubmitting ? "ระบบกำลังอัปเดทฐานข้อมูล..." : "กำลังเตรียมพร้อมระบบและฐานข้อมูล..."}
+                            </p>
+                        </div>
+                    )}
+
+                    {duplicateAlert && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm text-center animate-[fadeIn_0.2s_ease-out]">
+                                <div className="w-20 h-20 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner">
+                                    <i className="fas fa-user-lock text-4xl"></i>
+                                </div>
+                                <h3 className="text-2xl font-bold text-gray-800 mb-2">ขึ้นทะเบียนแล้ว!</h3>
+                                <p className="text-gray-600 mb-6 font-medium leading-relaxed">
+                                    นักเรียน <b>{duplicateAlert.name}</b><br/>ได้บันทึกข้อมูลเรียบร้อยแล้ว<br/>
+                                    <span className="text-brand-blue text-sm">เมื่อวันที่ {duplicateAlert.date}</span><br/><br/>
+                                    <span className="text-red-500 text-sm"><i className="fas fa-info-circle mr-1"></i>หากต้องการแก้ไขข้อมูล ให้ติดต่อเจ้าหน้าที่ดูแลระบบ</span>
+                                </p>
+                                <button onClick={() => setDuplicateAlert(null)} className="bg-gray-500 hover:bg-gray-600 text-white px-8 py-3 rounded-xl font-bold transition w-full shadow-lg">
+                                    ปิดหน้าต่าง
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {alertMsg && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm text-center animate-[fadeIn_0.2s_ease-out]">
+                                <div className="w-20 h-20 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner">
+                                    <i className="fas fa-exclamation-triangle text-4xl"></i>
+                                </div>
+                                <h3 className="text-2xl font-bold text-gray-800 mb-2">ข้อมูลไม่ครบถ้วน!</h3>
+                                <p className="text-gray-600 mb-8 font-medium">{alertMsg}</p>
+                                <button onClick={() => setAlertMsg('')} className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-xl font-bold transition w-full shadow-lg shadow-red-200">
+                                    กลับไปตรวจสอบ
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="bg-[#0A192F] bg-gradient-to-br from-[#021024] via-[#0A2647] to-[#021024] p-8 md:p-12 text-white flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-6 relative overflow-hidden border-b-[6px] border-yellow-400">
+                        
+                        <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-400 opacity-15 rounded-full blur-[100px] transform translate-x-1/4 -translate-y-1/4 pointer-events-none"></div>
+                        <div className="absolute bottom-0 left-0 w-80 h-80 bg-white opacity-10 rounded-full blur-[80px] transform -translate-x-1/4 translate-y-1/4 pointer-events-none"></div>
+                        <div className="absolute top-1/2 left-1/2 w-[120%] h-64 bg-blue-400 opacity-10 rounded-full blur-[120px] transform -translate-x-1/2 -translate-y-1/2 pointer-events-none rotate-12"></div>
+                        
+                        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8Y2lyY2xlIGN4PSIxIiBjeT0iMSIgcj0iMSIgZmlsbD0iI2ZmZiIgZmlsbC1vcGFjaXR5PSIwLjA1Ii8+Cjwvc3ZnPg==')] pointer-events-none"></div>
+
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 via-yellow-400 to-white opacity-80"></div>
+
+                        {initialData.schoolLogo && (
+                            <div className="relative z-10 shrink-0 bg-white/10 p-2 rounded-2xl backdrop-blur-sm border border-white/20">
+                                <img src={initialData.schoolLogo} alt="School Logo" className="w-24 h-24 md:w-32 md:h-32 object-contain drop-shadow-[0_15px_25px_rgba(0,0,0,0.6)] hover:scale-105 transition-transform duration-500" />
+                            </div>
+                        )}
+                        <div className="text-center sm:text-left relative z-10 flex flex-col justify-center w-full">
+                            <h1 className="text-3xl md:text-4xl lg:text-4xl font-extrabold text-white tracking-tight drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)] mb-4 leading-tight mt-2">
+                                ระบบบันทึกข้อมูลนักเรียน
+                            </h1>
+                            <div className="flex items-center justify-center sm:justify-start mb-4">
+                                <span className="bg-white/10 backdrop-blur-md border border-yellow-400/30 text-white text-xs md:text-sm font-semibold px-5 py-2.5 rounded-full shadow-[0_4px_10px_rgba(0,0,0,0.2)] inline-flex items-center">
+                                    <i className="fas fa-user-edit mr-2 text-yellow-400 text-lg"></i>
+                                    สำหรับการขึ้นทะเบียนและทำบัตรประจำตัวนักเรียน
+                                </span>
+                            </div>
+                            <h2 className="text-yellow-400 font-bold tracking-wider text-base md:text-lg drop-shadow-md flex items-center justify-center sm:justify-start mt-1">
+                                <i className="fas fa-school mr-2 text-white opacity-80"></i> {initialData.schoolName}
+                            </h2>
+                        </div>
+                    </div>
+
+                    <div className="p-6 md:p-10">
+                        <Stepper />
+
+                        {step === 1 && (
+                            <div className="fade-in space-y-5 relative">
+                                
+                                <h2 className="text-xl font-bold text-brand-blue border-l-4 border-brand-orange pl-3">ส่วนที่ 1: ข้อมูลนักเรียน</h2>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-blue-50 p-4 rounded-xl border border-blue-100">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-brand-blue mb-1">ระดับชั้น <span className="text-red-500">*</span></label>
+                                        <select name="classLevel" value={formData.classLevel} onChange={handleChange} className="w-full p-3 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition">
+                                            <option value="">เลือกชั้น...</option>
+                                            <option value="ม.1">มัธยมศึกษาปีที่ 1 (ม.1)</option>
+                                            <option value="ม.2">มัธยมศึกษาปีที่ 2 (ม.2)</option>
+                                            <option value="ม.3">มัธยมศึกษาปีที่ 3 (ม.3)</option>
+                                            <option value="ม.4">มัธยมศึกษาปีที่ 4 (ม.4)</option>
+                                            <option value="ม.5">มัธยมศึกษาปีที่ 5 (ม.5)</option>
+                                            <option value="ม.6">มัธยมศึกษาปีที่ 6 (ม.6)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-brand-blue mb-1">ห้อง <span className="text-red-500">*</span></label>
+                                        <select name="room" value={formData.room} onChange={handleChange} className="w-full p-3 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" disabled={!formData.classLevel}>
+                                            <option value="">เลือกห้อง...</option>
+                                            {[...Array(15)].map((_, i) => <option key={i+1} value={i+1}>{i+1}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                                    <div className="md:col-span-1">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">เลขประจำตัวนักเรียน <span className="text-red-500">*</span></label>
+                                        <div className="relative">
+                                            <i className="fas fa-id-badge absolute left-3 top-3 text-gray-400"></i>
+                                            <input type="text" name="studentCode" value={formData.studentCode} readOnly className="w-full pl-10 p-3 bg-gray-200 border border-gray-300 rounded-xl outline-none font-bold text-gray-600" placeholder="อัตโนมัติเมื่อเลือกชื่อ" />
+                                        </div>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">ชื่อ-นามสกุล นักเรียน <span className="text-red-500">*</span></label>
+                                        <div className="relative">
+                                            <i className="fas fa-user absolute left-3 top-3 text-gray-400"></i>
+                                            <select name="fullName" value={formData.fullName} onChange={(e) => {
+                                                const student = initialData.students.find(s => s.name === e.target.value);
+                                                
+                                                if (student && student.recordedDate) {
+                                                    setDuplicateAlert({
+                                                        name: student.name,
+                                                        date: student.recordedDate
+                                                    });
+                                                    setFormData(prev => ({
+                                                        ...prev, 
+                                                        fullName: '', 
+                                                        studentCode: '' 
+                                                    }));
+                                                    return;
+                                                }
+
+                                                setFormData(prev => ({
+                                                    ...prev, 
+                                                    fullName: e.target.value, 
+                                                    studentCode: student ? (student.studentCode || student.id || '') : '' 
+                                                }));
+                                            }} className="w-full pl-10 p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition appearance-none" disabled={!formData.classLevel || !formData.room}>
+                                                <option value="">{(!formData.classLevel || !formData.room) ? 'เลือกชั้นและห้องก่อน' : 'เลือกรายชื่อนักเรียน...'}</option>
+                                                {initialData.students
+                                                    .filter(s => {
+                                                        const shortClass = formData.classLevel.replace('มัธยมศึกษาปีที่ ', 'ม.');
+                                                        return s.classRoom === `${shortClass}/${formData.room}` || s.classRoom === `${formData.classLevel}/${formData.room}`;
+                                                    })
+                                                    .map((s, idx) => <option key={s.studentCode || s.id || idx} value={s.name}>{s.name}</option>)
+                                                }
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-5">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">ครูที่ปรึกษา <span className="text-red-500">*</span></label>
+                                        <div className="relative">
+                                            <i className="fas fa-chalkboard-teacher absolute left-3 top-3 text-gray-400"></i>
+                                            <input type="text" name="advisor" value={formData.advisor} readOnly className="w-full pl-10 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl outline-none font-bold text-sm md:text-base" placeholder="แสดงอัตโนมัติ" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-5">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">เลขบัตรประจำตัวประชาชน <span className="text-red-500">*</span></label>
+                                        <div className="relative">
+                                            <i className="fas fa-id-card absolute left-3 top-3 text-gray-400"></i>
+                                            <input type="text" name="nationalId" value={formData.nationalId} onChange={handleNationalIdChange} maxLength="17" className="w-full pl-10 p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition font-mono tracking-widest text-center text-sm md:text-base" placeholder="x-xxxx-xxxxx-xx-x" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">ศาสนา <span className="text-red-500">*</span></label>
+                                        <div className="flex gap-2">
+                                            <div className="relative flex-1">
+                                                <i className="fas fa-praying-hands absolute left-3 top-3 text-gray-400"></i>
+                                                <select name="religion" value={formData.religion} onChange={handleChange} className="w-full pl-10 p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition appearance-none text-sm md:text-base">
+                                                    <option value="">เลือกศาสนา...</option>
+                                                    <option value="อิสลาม">อิสลาม</option>
+                                                    <option value="พุทธ">พุทธ</option>
+                                                    <option value="คริสเตียน">คริสเตียน</option>
+                                                    <option value="อื่นๆ">อื่น ๆ</option>
+                                                </select>
+                                            </div>
+                                            {formData.religion === 'อื่นๆ' && (
+                                                <input type="text" name="religionOther" value={formData.religionOther} onChange={handleChange} className="flex-1 p-3 bg-white border border-blue-300 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition text-sm md:text-base" placeholder="ระบุ" />
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">เบอร์โทรศัพท์นักเรียน <span className="text-red-500">*</span></label>
+                                        <div className="relative">
+                                            <i className="fas fa-mobile-alt absolute left-3 top-3 text-gray-400"></i>
+                                            <input type="tel" name="studentTel" value={formData.studentTel} onChange={(e) => handlePhoneChange(e, 'studentTel')} maxLength="12" className="w-full pl-10 p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition font-mono tracking-widest text-center text-sm md:text-base" placeholder="xxx-xxx-xxxx" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-orange-50 p-4 rounded-xl border border-orange-100">
+                                    <div className="md:col-span-3">
+                                        <label className="block text-sm font-semibold text-brand-orange mb-1">วัน/เดือน/ปีเกิด (พ.ศ.) <span className="text-red-500">*</span></label>
+                                        <div className="flex gap-2">
+                                            <select name="dobDay" value={formData.dobDay} onChange={handleChange} className="w-1/3 p-3 bg-white border border-orange-200 rounded-xl outline-none focus:ring-2 focus:ring-brand-orange text-sm">
+                                                <option value="">วัน</option>
+                                                {[...Array(31)].map((_, i) => <option key={i+1} value={String(i+1).padStart(2, '0')}>{i+1}</option>)}
+                                            </select>
+                                            <select name="dobMonth" value={formData.dobMonth} onChange={handleChange} className="w-1/3 p-3 bg-white border border-orange-200 rounded-xl outline-none focus:ring-2 focus:ring-brand-orange text-sm">
+                                                <option value="">เดือน</option>
+                                                {["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"].map((m, i) => <option key={i+1} value={String(i+1).padStart(2, '0')}>{m}</option>)}
+                                            </select>
+                                            <select name="dobYear" value={formData.dobYear} onChange={handleChange} className="w-1/3 p-3 bg-white border border-orange-200 rounded-xl outline-none focus:ring-2 focus:ring-brand-orange text-sm">
+                                                <option value="">ปี พ.ศ.</option>
+                                                {Array.from({length: 40}, (_, i) => new Date().getFullYear() + 543 - i).map(y => <option key={y} value={y}>{y}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="md:col-span-1">
+                                        <label className="block text-sm font-semibold text-brand-orange mb-1">อายุ (ปี)</label>
+                                        <input type="text" name="age" value={formData.age} readOnly className="w-full p-3 bg-orange-100 border border-orange-200 rounded-xl outline-none font-bold text-center text-brand-orange" placeholder="อัตโนมัติ" />
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1">แผนการเรียน <span className="text-red-500">*</span></label>
+                                    {availablePrograms.length === 1 && formData.classLevel && formData.room ? (
+                                        <div className="relative">
+                                            <i className="fas fa-book absolute left-3 top-3 text-green-500"></i>
+                                            <input 
+                                                type="text" 
+                                                name="program" 
+                                                value={availablePrograms[0]} 
+                                                readOnly 
+                                                className="w-full pl-10 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl outline-none font-bold transition" 
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="relative">
+                                            <i className="fas fa-book absolute left-3 top-3 text-gray-400"></i>
+                                            <select 
+                                                name="program" 
+                                                value={formData.program} 
+                                                onChange={handleChange} 
+                                                className="w-full pl-10 p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition appearance-none" 
+                                                disabled={!formData.classLevel || !formData.room || availablePrograms.length === 0}
+                                            >
+                                                <option value="">
+                                                    {!formData.classLevel || !formData.room ? 'กรุณาเลือกชั้นและห้องก่อน' : 
+                                                     availablePrograms.length === 0 ? 'ไม่มีข้อมูลแผนการเรียนสำหรับห้องนี้' : 'เลือกแผนการเรียน...'}
+                                                </option>
+                                                {availablePrograms.map((opt, i) => (
+                                                    <option key={i} value={opt}>{opt}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 2 && (
+                            <div className="fade-in space-y-5">
+                                <h2 className="text-xl font-bold text-brand-blue border-l-4 border-brand-orange pl-3">ส่วนที่ 2: ข้อมูลผู้ปกครอง</h2>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                                    <div className="md:col-span-1">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">คำนำหน้า <span className="text-red-500">*</span></label>
+                                        <select name="parentTitle" value={formData.parentTitle} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition">
+                                            <option value="">เลือก...</option>
+                                            <option value="นาย">นาย</option>
+                                            <option value="นาง">นาง</option>
+                                            <option value="นางสาว">นางสาว</option>
+                                            <option value="อื่นๆ">อื่นๆ (ระบุ)</option>
+                                        </select>
+                                        {formData.parentTitle === 'อื่นๆ' && (
+                                            <input type="text" name="parentTitleOther" value={formData.parentTitleOther} onChange={handleChange} className="mt-2 w-full p-3 bg-white border border-blue-300 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition text-sm" placeholder="ระบุคำนำหน้า" />
+                                        )}
+                                    </div>
+                                    <div className="md:col-span-1 md:col-start-2">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">ชื่อ <span className="text-red-500">*</span></label>
+                                        <input type="text" name="parentFirstName" value={formData.parentFirstName} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="ชื่อผู้ปกครอง" />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">นามสกุล <span className="text-red-500">*</span></label>
+                                        <input type="text" name="parentLastName" value={formData.parentLastName} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="นามสกุล" />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">ความเกี่ยวข้องเป็น <span className="text-red-500">*</span></label>
+                                        <select name="parentRelation" value={formData.parentRelation} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition">
+                                            <option value="">เลือกระบุ...</option>
+                                            <option value="บิดา">บิดา</option>
+                                            <option value="มารดา">มารดา</option>
+                                            <option value="ปู่/ย่า/ตา/ยาย">ปู่/ย่า/ตา/ยาย</option>
+                                            <option value="ลุง/ป้า/น้า/อา">ลุง/ป้า/น้า/อา</option>
+                                            <option value="พี่น้อง">พี่น้อง</option>
+                                            <option value="อื่นๆ">อื่นๆ</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span></label>
+                                        <div className="relative">
+                                            <i className="fas fa-phone-alt absolute left-3 top-3 text-gray-400"></i>
+                                            <input type="tel" name="parentTel" value={formData.parentTel} onChange={(e) => handlePhoneChange(e, 'parentTel')} maxLength="12" className="w-full pl-10 p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition font-mono tracking-widest text-center" placeholder="xxx-xxx-xxxx" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                    <div className="flex items-center justify-between mb-3 border-b border-gray-200 pb-2">
+                                        <label className="block text-sm font-bold text-brand-blue"><i className="fas fa-briefcase mr-2"></i>ข้อมูลการทำงาน</label>
+                                        <label className="flex items-center text-sm font-bold text-red-500 cursor-pointer hover:bg-red-50 px-2 py-1 rounded transition">
+                                            <input type="checkbox" name="parentUnemployed" checked={formData.parentUnemployed} onChange={handleChange} className="mr-2 w-4 h-4 accent-red-500" />
+                                            ไม่ได้ประกอบอาชีพ
+                                        </label>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">อาชีพ <span className="text-red-500">*</span></label>
+                                            <input type="text" name="parentOccupation" value={formData.parentOccupation} onChange={handleChange} disabled={formData.parentUnemployed} className="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:text-gray-500" placeholder="เช่น รับจ้าง, ค้าขาย, รับราชการ" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">สถานที่ทำงาน <span className="text-red-500">*</span></label>
+                                            <input type="text" name="parentWorkplace" value={formData.parentWorkplace} onChange={handleChange} disabled={formData.parentUnemployed} className="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:text-gray-500 text-center md:text-left" placeholder="ชื่อบริษัท, องค์กร หรือระบุ อำเภอ/จังหวัด" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 3 && (
+                            <div className="fade-in space-y-5">
+                                <h2 className="text-xl font-bold text-brand-blue border-l-4 border-brand-orange pl-3">ส่วนที่ 3: ที่อยู่ปัจจุบันที่สามารถติดต่อได้</h2>
+                                
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="col-span-1">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">บ้านเลขที่ <span className="text-red-500">*</span></label>
+                                        <input type="text" name="addrNo" value={formData.addrNo} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="เช่น 123/4" />
+                                    </div>
+                                    <div className="col-span-1">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">หมู่ที่ <span className="text-red-500">*</span></label>
+                                        <input type="text" name="addrMoo" value={formData.addrMoo} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="ไม่มีใส่ -" />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">จังหวัด <span className="text-red-500">*</span></label>
+                                        <input 
+                                            type="text" 
+                                            name="addrProv" 
+                                            value={formData.addrProv} 
+                                            onChange={handleChange} 
+                                            list="prov-list"
+                                            autoComplete="off"
+                                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" 
+                                            placeholder="พิมพ์เพื่อค้นหาจังหวัด" 
+                                        />
+                                        <datalist id="prov-list">
+                                            {uniqueProvinces.map(p => <option key={p} value={p} />)}
+                                        </datalist>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">อำเภอ/เขต <span className="text-red-500">*</span></label>
+                                        <input 
+                                            type="text" 
+                                            name="addrDist" 
+                                            value={formData.addrDist} 
+                                            onChange={handleChange} 
+                                            list="dist-list"
+                                            autoComplete="off"
+                                            disabled={!formData.addrProv}
+                                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                                            placeholder="พิมพ์เพื่อค้นหาอำเภอ" 
+                                        />
+                                        <datalist id="dist-list">
+                                            {availableDistricts.map(d => <option key={d} value={d} />)}
+                                        </datalist>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">ตำบล/แขวง <span className="text-red-500">*</span></label>
+                                        <input 
+                                            type="text" 
+                                            name="addrSub" 
+                                            value={formData.addrSub} 
+                                            onChange={handleChange} 
+                                            list="sub-list"
+                                            autoComplete="off"
+                                            disabled={!formData.addrDist}
+                                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                                            placeholder="พิมพ์เพื่อค้นหาตำบล" 
+                                        />
+                                        <datalist id="sub-list">
+                                            {availableSubs.map(s => <option key={s} value={s} />)}
+                                        </datalist>
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                     <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">รหัสไปรษณีย์ <span className="text-red-500">*</span></label>
+                                        <input 
+                                            type="text" 
+                                            name="addrZip" 
+                                            value={formData.addrZip} 
+                                            readOnly
+                                            className="w-full p-3 bg-gray-100 border border-gray-300 rounded-xl outline-none font-bold text-gray-600 tracking-widest cursor-default" 
+                                            placeholder="อัตโนมัติเมื่อเลือกตำบล" 
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="mt-10 flex justify-between items-center border-t border-gray-100 pt-6">
+                            {step > 1 ? (
+                                <button onClick={prevStep} disabled={isSubmitting} className="flex items-center text-gray-500 bg-gray-100 hover:bg-gray-200 px-6 py-2.5 rounded-xl font-semibold transition disabled:opacity-50">
+                                    <i className="fas fa-chevron-left mr-2"></i> ย้อนกลับ
+                                </button>
+                            ) : (
+                                <div></div> 
+                            )}
+
+                            {step < 3 ? (
+                                <button onClick={nextStep} className="flex items-center text-white bg-brand-blue hover-bg-brand-blue px-8 py-2.5 rounded-xl font-bold shadow-md shadow-blue-200 transition">
+                                    ถัดไป <i className="fas fa-chevron-right ml-2"></i>
+                                </button>
+                            ) : (
+                                <button onClick={handleSubmit} disabled={isSubmitting} className="flex items-center text-white bg-brand-orange hover-bg-brand-orange px-8 py-2.5 rounded-xl font-bold shadow-md shadow-orange-200 transition disabled:opacity-70">
+                                    {isSubmitting ? (
+                                        <><i className="fas fa-spinner fa-spin mr-2"></i> กำลังบันทึก...</>
+                                    ) : (
+                                        <><i className="fas fa-save mr-2"></i> ยืนยันบันทึกข้อมูล</>
+                                    )}
+                                </button>
+                            )}
+                        </div>
+
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
