@@ -14,6 +14,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
+        /* ล็อกหน้าจอหลักไม่ให้ขยับแบบ 100% เพื่อให้ฟอร์มด้านในเลื่อนแทน (เหมือนแอปฯ จริง) */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            height: 100dvh; /* ล็อกความสูงหน้าต่างเท่าหน้าจอมือถือเป๊ะๆ */
+            overflow: hidden; /* ห้ามหน้าหลักเลื่อนเด็ดขาด */
+            position: fixed; /* ป้องกันการเด้ง (Overscroll) ใน iOS Safari */
+        }
+        
         body {
             font-family: 'Sarabun', sans-serif;
             background-color: #f0f8ff; 
@@ -35,6 +46,21 @@
         /* เพิ่ม Safe Area ป้องกันปุ่มโดนขอบจอด้านล่างของ iPhone รบกวน */
         .safe-area-pb {
             padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+
+        /* ตกแต่งแถบ Scrollbar ให้ดูสะอาดตา (แสดงผลเฉพาะบนคอมพิวเตอร์) */
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
         }
 
         /* ========================================================
@@ -74,10 +100,9 @@
         }
     </style>
 </head>
-<!-- ปรับ p-0 บนจอมือถือเพื่อให้ฟอร์มแนบขอบจอ (Edge to edge) และจัดให้อยู่ด้านบน -->
-<body class="min-h-screen flex items-start sm:items-center justify-center p-0 sm:p-4 md:p-8">
+<body class="flex items-start sm:items-center justify-center p-0 sm:p-4 md:p-8 w-full h-full">
 
-    <div id="root" class="w-full max-w-4xl"></div>
+    <div id="root" class="w-full max-w-4xl h-full sm:h-[95vh] flex flex-col relative"></div>
 
     <script type="text/babel">
         const { useState } = React;
@@ -91,6 +116,10 @@
             const [showFinalPopup, setShowFinalPopup] = useState(false); 
             const [alertMsg, setAlertMsg] = useState(''); 
             const [duplicateAlert, setDuplicateAlert] = useState(null); 
+            const [activeDropdown, setActiveDropdown] = useState(null);
+            
+            // เพิ่ม State สำหรับจัดการ Pop-up แจ้งเตือนเมื่อเปิดหน้าแรก
+            const [hasAcknowledgedWarning, setHasAcknowledgedWarning] = useState(false);
 
             const getCachedData = () => {
                 try {
@@ -495,12 +524,18 @@
                 }
                 
                 setStep(prev => prev + 1);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                const scrollContainer = document.getElementById('form-scroll-container');
+                if (scrollContainer) {
+                    scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+                }
             };
 
             const prevStep = () => {
                 setStep(prev => prev - 1);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                const scrollContainer = document.getElementById('form-scroll-container');
+                if (scrollContainer) {
+                    scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+                }
             };
 
             const handleSubmit = async () => {
@@ -611,17 +646,19 @@
 
             if (showFinalPopup) {
                 return (
-                    <div className="bg-white rounded-xl sm:rounded-3xl shadow-xl sm:shadow-2xl p-6 sm:p-8 text-center fade-in w-full max-w-lg mx-auto border-t-8 border-green-500">
-                        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-inner">
-                            <i className="fas fa-check text-4xl sm:text-5xl"></i>
+                    <div className="flex flex-col justify-center items-center h-full w-full p-4">
+                        <div className="bg-white rounded-xl sm:rounded-3xl shadow-xl sm:shadow-2xl p-6 sm:p-8 text-center fade-in w-full max-w-lg mx-auto border-t-8 border-green-500">
+                            <div className="w-20 h-20 sm:w-24 sm:h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-inner">
+                                <i className="fas fa-check text-4xl sm:text-5xl"></i>
+                            </div>
+                            <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">ข้อมูลได้รับการบันทึกเรียบร้อยแล้ว</h2>
+                            <p className="text-sm sm:text-base text-gray-600 font-medium leading-relaxed bg-gray-50 p-4 rounded-xl border border-gray-100 text-left">
+                                ระบบได้จัดเก็บข้อมูลของนักเรียนลงในฐานข้อมูลเสร็จสมบูรณ์<br/>
+                                <span className="text-red-500 text-xs sm:text-sm mt-3 block font-bold text-center">
+                                    <i className="fas fa-info-circle mr-1"></i> หากต้องการแก้ไขข้อมูลหลังจากนี้ ให้ติดต่อเจ้าหน้าที่
+                                </span>
+                            </p>
                         </div>
-                        <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">ข้อมูลได้รับการบันทึกเรียบร้อยแล้ว</h2>
-                        <p className="text-sm sm:text-base text-gray-600 font-medium leading-relaxed bg-gray-50 p-4 rounded-xl border border-gray-100 text-left">
-                            ระบบได้จัดเก็บข้อมูลของนักเรียนลงในฐานข้อมูลเสร็จสมบูรณ์<br/>
-                            <span className="text-red-500 text-xs sm:text-sm mt-3 block font-bold text-center">
-                                <i className="fas fa-info-circle mr-1"></i> หากต้องการแก้ไขข้อมูลหลังจากนี้ ให้ติดต่อเจ้าหน้าที่
-                            </span>
-                        </p>
                     </div>
                 );
             }
@@ -631,91 +668,127 @@
                 const parentFullName = formData.parentLastName ? `${pTitle}${formData.parentFirstName} ${formData.parentLastName}`.trim() : `${pTitle} ${formData.parentFirstName}`.trim();
 
                 return (
-                    <div className="bg-white rounded-none sm:rounded-3xl shadow-none sm:shadow-2xl p-4 sm:p-6 md:p-10 fade-in w-full max-w-3xl mx-auto min-h-screen sm:min-h-0">
-                        <div className="text-center mb-6 sm:mb-8 mt-4 sm:mt-0">
-                            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-blue-100 text-brand-blue rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
-                                <i className="fas fa-search text-xl sm:text-2xl"></i>
-                            </div>
-                            <h2 className="text-xl sm:text-2xl font-bold text-brand-blue">ตรวจสอบความถูกต้องของข้อมูล</h2>
-                            <p className="text-xs sm:text-sm text-gray-500 mt-1">กรุณาตรวจสอบรายละเอียด หากข้อมูลถูกต้องแล้ว ให้กดยืนยันด้านล่าง</p>
-                        </div>
-                        
-                        <div className="space-y-4 sm:space-y-6 text-gray-700">
-                            <div className="bg-blue-50 p-4 sm:p-5 rounded-xl border border-blue-100 shadow-sm">
-                                <h3 className="font-bold text-brand-blue mb-3 text-base sm:text-lg border-b border-blue-200 pb-2"><i className="fas fa-user mr-2"></i>ส่วนที่ 1: ข้อมูลนักเรียน</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 sm:gap-y-3 gap-x-4 text-sm sm:text-base break-words">
-                                    <p><span className="font-bold text-gray-500">ชื่อ-นามสกุล:</span> {formData.fullName}</p>
-                                    <p><span className="font-bold text-gray-500">เลขประจำตัว:</span> {formData.studentCode}</p>
-                                    <p><span className="font-bold text-gray-500">ระดับชั้น:</span> {formData.classLevel} / {formData.room}</p>
-                                    <p><span className="font-bold text-gray-500">แผนการเรียน:</span> {formData.program}</p>
-                                    <p className="md:col-span-2"><span className="font-bold text-gray-500">ครูที่ปรึกษา:</span> {formData.advisor}</p>
-                                    <p><span className="font-bold text-gray-500">เลขบัตร ปชช.:</span> {formData.nationalId}</p>
-                                    <p><span className="font-bold text-gray-500">ศาสนา:</span> {formData.religion === 'อื่นๆ' ? formData.religionOther : formData.religion}</p>
-                                    <p><span className="font-bold text-gray-500">เบอร์โทรนักเรียน:</span> {formData.studentTel}</p>
-                                    <p className="md:col-span-2"><span className="font-bold text-gray-500">วันเกิด:</span> {formData.dobDay} {getMonthName(formData.dobMonth)} {formData.dobYear} <span className="text-brand-orange font-bold">(อายุ {formData.age} ปี)</span></p>
+                    <div className="bg-white rounded-none sm:rounded-3xl shadow-none sm:shadow-2xl overflow-hidden relative w-full h-full sm:h-auto max-w-3xl mx-auto flex flex-col">
+                        <div className="p-4 sm:p-6 md:p-10 fade-in flex-grow flex flex-col overflow-y-auto custom-scroll bg-white" style={{ WebkitOverflowScrolling: 'touch' }}>
+                            <div className="text-center mb-6 sm:mb-8 mt-4 sm:mt-0 shrink-0">
+                                <div className="w-14 h-14 sm:w-16 sm:h-16 bg-blue-100 text-brand-blue rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                                    <i className="fas fa-search text-xl sm:text-2xl"></i>
+                                </div>
+                                <h2 className="text-xl sm:text-2xl font-bold text-brand-blue">ตรวจสอบความถูกต้องของข้อมูล</h2>
+                                <p className="text-xs sm:text-sm text-gray-500 mt-1 mb-4">กรุณาตรวจสอบรายละเอียด หากข้อมูลถูกต้องแล้ว ให้กดยืนยันด้านล่าง</p>
+                                
+                                {/* กล่องข้อความเตือน (หน้าสุดท้าย) */}
+                                <div className="bg-red-50 border border-red-200 p-3 sm:p-4 rounded-xl shadow-sm text-left inline-block max-w-2xl mx-auto w-full">
+                                    <div className="flex items-start">
+                                        <div className="flex-shrink-0 text-red-500">
+                                            <i className="fas fa-exclamation-triangle text-lg sm:text-xl"></i>
+                                        </div>
+                                        <div className="ml-3">
+                                            <p className="text-sm sm:text-base text-red-700 font-semibold leading-snug">
+                                                ให้กรอกข้อมูลตามความเป็นจริง หากกรอกข้อมูลเท็จ จะมีผลในการพิจารณาทุนการศึกษา และการติดตามดูแลนักเรียน สิทธิประโยชน์และโอกาสต่างๆ
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
+                            
+                            <div className="space-y-4 sm:space-y-6 text-gray-700 shrink-0">
+                                <div className="bg-blue-50 p-4 sm:p-5 rounded-xl border border-blue-100 shadow-sm">
+                                    <h3 className="font-bold text-brand-blue mb-3 text-base sm:text-lg border-b border-blue-200 pb-2"><i className="fas fa-user mr-2"></i>ส่วนที่ 1: ข้อมูลนักเรียน</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 sm:gap-y-3 gap-x-4 text-sm sm:text-base break-words">
+                                        <p><span className="font-bold text-gray-500">ชื่อ-นามสกุล:</span> {formData.fullName}</p>
+                                        <p><span className="font-bold text-gray-500">เลขประจำตัว:</span> {formData.studentCode}</p>
+                                        <p><span className="font-bold text-gray-500">ระดับชั้น:</span> {formData.classLevel} / {formData.room}</p>
+                                        <p><span className="font-bold text-gray-500">แผนการเรียน:</span> {formData.program}</p>
+                                        <p className="md:col-span-2"><span className="font-bold text-gray-500">ครูที่ปรึกษา:</span> {formData.advisor}</p>
+                                        <p><span className="font-bold text-gray-500">เลขบัตร ปชช.:</span> {formData.nationalId}</p>
+                                        <p><span className="font-bold text-gray-500">ศาสนา:</span> {formData.religion === 'อื่นๆ' ? formData.religionOther : formData.religion}</p>
+                                        <p><span className="font-bold text-gray-500">เบอร์โทรนักเรียน:</span> {formData.studentTel}</p>
+                                        <p className="md:col-span-2"><span className="font-bold text-gray-500">วันเกิด:</span> {formData.dobDay} {getMonthName(formData.dobMonth)} {formData.dobYear} <span className="text-brand-orange font-bold">(อายุ {formData.age} ปี)</span></p>
+                                    </div>
+                                </div>
 
-                            <div className="bg-red-50 p-4 sm:p-5 rounded-xl border border-red-100 shadow-sm">
-                                <h3 className="font-bold text-red-500 mb-3 text-base sm:text-lg border-b border-red-200 pb-2"><i className="fas fa-heartbeat mr-2"></i>ส่วนที่ 2: ข้อมูลสุขภาพ</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 sm:gap-y-3 gap-x-4 text-sm sm:text-base break-words">
-                                    <p><span className="font-bold text-gray-500">น้ำหนัก:</span> {formData.weight} กก.</p>
-                                    <p><span className="font-bold text-gray-500">ส่วนสูง:</span> {formData.height} ซม.</p>
-                                    <p><span className="font-bold text-gray-500">ค่า BMI:</span> {formData.bmi} <span className="font-bold text-brand-orange">({formData.bmiResult})</span></p>
-                                    <p><span className="font-bold text-gray-500">ความพิการ:</span> {formData.hasDisability === 'true' ? formData.disabilityName : 'ไม่มี'}</p>
-                                    <p><span className="font-bold text-gray-500">โรคประจำตัว:</span> {formData.hasDisease === 'true' ? formData.diseaseName : 'ไม่มี'}</p>
-                                    <p><span className="font-bold text-gray-500">ยาที่ต้องทานประจำ:</span> {formData.hasDisease === 'true' && formData.regularMeds ? formData.regularMeds : '-'}</p>
+                                <div className="bg-red-50 p-4 sm:p-5 rounded-xl border border-red-100 shadow-sm">
+                                    <h3 className="font-bold text-red-500 mb-3 text-base sm:text-lg border-b border-red-200 pb-2"><i className="fas fa-heartbeat mr-2"></i>ส่วนที่ 2: ข้อมูลสุขภาพ</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 sm:gap-y-3 gap-x-4 text-sm sm:text-base break-words">
+                                        <p><span className="font-bold text-gray-500">น้ำหนัก:</span> {formData.weight} กก.</p>
+                                        <p><span className="font-bold text-gray-500">ส่วนสูง:</span> {formData.height} ซม.</p>
+                                        <p><span className="font-bold text-gray-500">ค่า BMI:</span> {formData.bmi} <span className="font-bold text-brand-orange">({formData.bmiResult})</span></p>
+                                        <p><span className="font-bold text-gray-500">ความพิการ:</span> {formData.hasDisability === 'true' ? formData.disabilityName : 'ไม่มี'}</p>
+                                        <p><span className="font-bold text-gray-500">โรคประจำตัว:</span> {formData.hasDisease === 'true' ? formData.diseaseName : 'ไม่มี'}</p>
+                                        <p><span className="font-bold text-gray-500">ยาที่ต้องทานประจำ:</span> {formData.hasDisease === 'true' && formData.regularMeds ? formData.regularMeds : '-'}</p>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div className="bg-orange-50 p-4 sm:p-5 rounded-xl border border-orange-100 shadow-sm">
-                                <h3 className="font-bold text-brand-orange mb-3 text-base sm:text-lg border-b border-orange-200 pb-2"><i className="fas fa-users mr-2"></i>ส่วนที่ 3: ข้อมูลครอบครัว</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 sm:gap-y-3 gap-x-4 text-sm sm:text-base mb-3 break-words">
-                                    <p><span className="font-bold text-gray-500">สถานะครอบครัว:</span> {formData.parentsStatus}</p>
-                                    <p><span className="font-bold text-gray-500">ปัจจุบันอาศัยอยู่กับ:</span> {formData.livingWith}</p>
+                                <div className="bg-orange-50 p-4 sm:p-5 rounded-xl border border-orange-100 shadow-sm">
+                                    <h3 className="font-bold text-brand-orange mb-3 text-base sm:text-lg border-b border-orange-200 pb-2"><i className="fas fa-users mr-2"></i>ส่วนที่ 3: ข้อมูลครอบครัว</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 sm:gap-y-3 gap-x-4 text-sm sm:text-base mb-3 break-words">
+                                        <p><span className="font-bold text-gray-500">สถานะครอบครัว:</span> {formData.parentsStatus}</p>
+                                        <p><span className="font-bold text-gray-500">ปัจจุบันอาศัยอยู่กับ:</span> {formData.livingWith}</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-y-2 sm:gap-y-3 gap-x-4 text-sm sm:text-base bg-white p-3 sm:p-4 rounded-lg border border-orange-200 break-words">
+                                        <p className="font-bold text-brand-blue mb-1"><i className="fas fa-user-shield mr-2"></i>ผู้ปกครองหลัก (ที่ติดต่อได้)</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 sm:gap-y-3 gap-x-4">
+                                            <p><span className="font-bold text-gray-500">ชื่อ-นามสกุล:</span> {parentFullName}</p>
+                                            <p><span className="font-bold text-gray-500">ความเกี่ยวข้อง:</span> {formData.parentRelation}</p>
+                                            <p><span className="font-bold text-gray-500">เบอร์โทรติดต่อ:</span> {formData.parentTel}</p>
+                                            <p><span className="font-bold text-gray-500">อาชีพ:</span> {formData.parentOccupation}</p>
+                                            <p><span className="font-bold text-gray-500">รายได้/เดือน:</span> {formData.parentIncome}</p>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="grid grid-cols-1 gap-y-2 sm:gap-y-3 gap-x-4 text-sm sm:text-base bg-white p-3 sm:p-4 rounded-lg border border-orange-200 break-words">
-                                    <p className="font-bold text-brand-blue mb-1"><i className="fas fa-user-shield mr-2"></i>ผู้ปกครองหลัก (ที่ติดต่อได้)</p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 sm:gap-y-3 gap-x-4">
-                                        <p><span className="font-bold text-gray-500">ชื่อ-นามสกุล:</span> {parentFullName}</p>
-                                        <p><span className="font-bold text-gray-500">ความเกี่ยวข้อง:</span> {formData.parentRelation}</p>
-                                        <p><span className="font-bold text-gray-500">เบอร์โทรติดต่อ:</span> {formData.parentTel}</p>
-                                        <p><span className="font-bold text-gray-500">อาชีพ:</span> {formData.parentOccupation}</p>
-                                        <p><span className="font-bold text-gray-500">รายได้/เดือน:</span> {formData.parentIncome}</p>
+
+                                <div className="bg-gray-50 p-4 sm:p-5 rounded-xl border border-gray-200 shadow-sm">
+                                    <h3 className="font-bold text-gray-700 mb-3 text-base sm:text-lg border-b border-gray-200 pb-2"><i className="fas fa-address-card mr-2"></i>ส่วนที่ 4: ที่อยู่ปัจจุบัน</h3>
+                                    <div className="text-sm sm:text-base">
+                                        <p className="leading-relaxed"><span className="font-bold text-gray-500">ที่อยู่:</span> {[
+                                            formData.addrNo ? `บ้านเลขที่ ${formData.addrNo}` : '',
+                                            formData.addrMoo ? `หมู่ที่ ${formData.addrMoo}` : '',
+                                            formData.addrSub ? `ต.${formData.addrSub}` : '',
+                                            formData.addrDist ? `อ.${formData.addrDist}` : '',
+                                            formData.addrProv ? `จ.${formData.addrProv}` : '',
+                                            formData.addrZip || ''
+                                        ].filter(Boolean).join(' ')}</p>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="bg-gray-50 p-4 sm:p-5 rounded-xl border border-gray-200 shadow-sm">
-                                <h3 className="font-bold text-gray-700 mb-3 text-base sm:text-lg border-b border-gray-200 pb-2"><i className="fas fa-address-card mr-2"></i>ส่วนที่ 4: ที่อยู่ปัจจุบัน</h3>
-                                <div className="text-sm sm:text-base">
-                                    <p className="leading-relaxed"><span className="font-bold text-gray-500">ที่อยู่:</span> {[
-                                        formData.addrNo ? `บ้านเลขที่ ${formData.addrNo}` : '',
-                                        formData.addrMoo ? `หมู่ที่ ${formData.addrMoo}` : '',
-                                        formData.addrSub ? `ต.${formData.addrSub}` : '',
-                                        formData.addrDist ? `อ.${formData.addrDist}` : '',
-                                        formData.addrProv ? `จ.${formData.addrProv}` : '',
-                                        formData.addrZip || ''
-                                    ].filter(Boolean).join(' ')}</p>
-                                </div>
+                            <div className="mt-8 sm:mt-10 flex flex-col-reverse sm:flex-row justify-center gap-3 sm:gap-4 safe-area-pb shrink-0 pb-6 sm:pb-0">
+                                <button onClick={() => { setIsSuccess(false); setStep(1); }} className="w-full sm:w-auto bg-white border-2 border-gray-300 hover:bg-gray-50 text-gray-700 px-6 py-3.5 sm:py-3 rounded-xl font-bold transition flex items-center justify-center text-[15px] sm:text-base">
+                                    <i className="fas fa-edit mr-2"></i> กลับไปแก้ไขข้อมูล
+                                </button>
+                                <button onClick={() => setShowFinalPopup(true)} className="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white px-8 py-3.5 sm:py-3 rounded-xl font-bold shadow-md shadow-green-200 transition flex items-center justify-center text-[15px] sm:text-base">
+                                    <i className="fas fa-check-circle mr-2"></i> ยืนยันข้อมูลถูกต้อง
+                                </button>
                             </div>
-                        </div>
-
-                        <div className="mt-8 sm:mt-10 flex flex-col-reverse sm:flex-row justify-center gap-3 sm:gap-4 safe-area-pb">
-                            <button onClick={() => { setIsSuccess(false); setStep(1); }} className="w-full sm:w-auto bg-white border-2 border-gray-300 hover:bg-gray-50 text-gray-700 px-6 py-3.5 sm:py-3 rounded-xl font-bold transition flex items-center justify-center text-[15px] sm:text-base">
-                                <i className="fas fa-edit mr-2"></i> กลับไปแก้ไขข้อมูล
-                            </button>
-                            <button onClick={() => setShowFinalPopup(true)} className="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white px-8 py-3.5 sm:py-3 rounded-xl font-bold shadow-md shadow-green-200 transition flex items-center justify-center text-[15px] sm:text-base">
-                                <i className="fas fa-check-circle mr-2"></i> ยืนยันข้อมูลถูกต้อง
-                            </button>
                         </div>
                     </div>
                 );
             }
 
             return (
-                <div className="bg-white sm:rounded-3xl shadow-none sm:shadow-2xl overflow-hidden relative w-full min-h-screen sm:min-h-0 flex flex-col">
+                <div className="bg-white sm:rounded-3xl shadow-none sm:shadow-2xl overflow-hidden relative w-full h-full flex flex-col">
                     
+                    {/* ป๊อปอัพแจ้งเตือนสำคัญเมื่อเข้าเว็บครั้งแรก */}
+                    {(!isLoadingData && !isSuccess && !hasAcknowledgedWarning) && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-full w-full">
+                            <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl p-6 sm:p-8 w-[95%] sm:w-full max-w-md text-center animate-[fadeIn_0.2s_ease-out]">
+                                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-5 shadow-inner">
+                                    <i className="fas fa-exclamation-triangle text-3xl sm:text-4xl"></i>
+                                </div>
+                                <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4">แจ้งเตือนสำคัญ</h3>
+                                <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl text-left mb-6 sm:mb-8">
+                                    <p className="text-sm sm:text-base text-red-700 font-semibold leading-relaxed">
+                                        ให้กรอกข้อมูลตามความเป็นจริง หากกรอกข้อมูลเท็จ จะมีผลในการพิจารณาทุนการศึกษา และการติดตามดูแลนักเรียน สิทธิประโยชน์และโอกาสต่างๆ
+                                    </p>
+                                </div>
+                                <button onClick={() => setHasAcknowledgedWarning(true)} className="bg-brand-blue hover:bg-blue-600 text-white px-8 py-3.5 sm:py-3 rounded-xl font-bold transition w-full shadow-lg shadow-blue-200 text-[15px] sm:text-base">
+                                    รับทราบ
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {(isLoadingData || isSubmitting) && (
                         <div className="absolute inset-0 bg-white/90 z-50 flex flex-col items-center justify-center backdrop-blur-sm animate-[fadeIn_0.3s_ease-out] p-4 text-center">
                             <div className="relative w-24 h-24 sm:w-32 sm:h-32 mb-4 sm:mb-6 flex items-center justify-center">
@@ -738,7 +811,7 @@
                     )}
 
                     {duplicateAlert && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-full w-full">
                             <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl p-6 sm:p-8 w-[95%] sm:w-full max-w-sm text-center animate-[fadeIn_0.2s_ease-out]">
                                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-5 shadow-inner">
                                     <i className="fas fa-user-lock text-3xl sm:text-4xl"></i>
@@ -757,7 +830,7 @@
                     )}
 
                     {alertMsg && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 h-full w-full">
                             <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl p-6 sm:p-8 w-[95%] sm:w-full max-w-sm text-center animate-[fadeIn_0.2s_ease-out]">
                                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-5 shadow-inner">
                                     <i className="fas fa-exclamation-triangle text-3xl sm:text-4xl"></i>
@@ -799,7 +872,7 @@
                         </div>
                     </div>
 
-                    <div className="p-4 sm:p-6 md:p-10 flex-grow flex flex-col">
+                    <div id="form-scroll-container" className="p-4 sm:p-6 md:p-10 flex-grow flex flex-col overflow-y-auto custom-scroll bg-white relative" style={{ WebkitOverflowScrolling: 'touch' }}>
                         <Stepper />
 
                         <div className="flex-grow">
@@ -1346,53 +1419,101 @@
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">จังหวัด <span className="text-red-500">*</span></label>
-                                        <input 
-                                            type="text" 
-                                            name="addrProv" 
-                                            value={formData.addrProv} 
-                                            onChange={handleChange} 
-                                            list="prov-list"
-                                            autoComplete="off"
-                                            className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" 
-                                            placeholder="พิมพ์เพื่อค้นหาจังหวัด" 
-                                        />
-                                        <datalist id="prov-list">
-                                            {uniqueProvinces.map(p => <option key={p} value={p} />)}
-                                        </datalist>
+                                        <div className="relative">
+                                            <input 
+                                                type="text" 
+                                                name="addrProv" 
+                                                value={formData.addrProv} 
+                                                onChange={handleChange} 
+                                                onFocus={() => setActiveDropdown('prov')}
+                                                onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
+                                                autoComplete="off"
+                                                className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" 
+                                                placeholder="พิมพ์เพื่อค้นหาจังหวัด" 
+                                            />
+                                            {activeDropdown === 'prov' && (
+                                                <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto text-left">
+                                                    {uniqueProvinces.filter(p => p.includes(formData.addrProv)).length > 0 ? (
+                                                        uniqueProvinces.filter(p => p.includes(formData.addrProv)).map(p => (
+                                                            <li key={p} 
+                                                                onClick={() => handleChange({ target: { name: 'addrProv', value: p } })}
+                                                                className="p-3 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 border-b border-gray-100 last:border-0"
+                                                            >
+                                                                {p}
+                                                            </li>
+                                                        ))
+                                                    ) : (
+                                                        <li className="p-3 text-sm text-gray-500 text-center">ไม่พบข้อมูล</li>
+                                                    )}
+                                                </ul>
+                                            )}
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">อำเภอ/เขต <span className="text-red-500">*</span></label>
-                                        <input 
-                                            type="text" 
-                                            name="addrDist" 
-                                            value={formData.addrDist} 
-                                            onChange={handleChange} 
-                                            list="dist-list"
-                                            autoComplete="off"
-                                            disabled={!formData.addrProv}
-                                            className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed" 
-                                            placeholder="พิมพ์เพื่อค้นหาอำเภอ" 
-                                        />
-                                        <datalist id="dist-list">
-                                            {availableDistricts.map(d => <option key={d} value={d} />)}
-                                        </datalist>
+                                        <div className="relative">
+                                            <input 
+                                                type="text" 
+                                                name="addrDist" 
+                                                value={formData.addrDist} 
+                                                onChange={handleChange} 
+                                                onFocus={() => setActiveDropdown('dist')}
+                                                onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
+                                                autoComplete="off"
+                                                disabled={!formData.addrProv}
+                                                className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                                                placeholder="พิมพ์เพื่อค้นหาอำเภอ" 
+                                            />
+                                            {activeDropdown === 'dist' && formData.addrProv && (
+                                                <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto text-left">
+                                                    {availableDistricts.filter(d => d.includes(formData.addrDist)).length > 0 ? (
+                                                        availableDistricts.filter(d => d.includes(formData.addrDist)).map(d => (
+                                                            <li key={d} 
+                                                                onClick={() => handleChange({ target: { name: 'addrDist', value: d } })}
+                                                                className="p-3 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 border-b border-gray-100 last:border-0"
+                                                            >
+                                                                {d}
+                                                            </li>
+                                                        ))
+                                                    ) : (
+                                                        <li className="p-3 text-sm text-gray-500 text-center">ไม่พบข้อมูล</li>
+                                                    )}
+                                                </ul>
+                                            )}
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">ตำบล/แขวง <span className="text-red-500">*</span></label>
-                                        <input 
-                                            type="text" 
-                                            name="addrSub" 
-                                            value={formData.addrSub} 
-                                            onChange={handleChange} 
-                                            list="sub-list"
-                                            autoComplete="off"
-                                            disabled={!formData.addrDist}
-                                            className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed" 
-                                            placeholder="พิมพ์เพื่อค้นหาตำบล" 
-                                        />
-                                        <datalist id="sub-list">
-                                            {availableSubs.map(s => <option key={s} value={s} />)}
-                                        </datalist>
+                                        <div className="relative">
+                                            <input 
+                                                type="text" 
+                                                name="addrSub" 
+                                                value={formData.addrSub} 
+                                                onChange={handleChange} 
+                                                onFocus={() => setActiveDropdown('sub')}
+                                                onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
+                                                autoComplete="off"
+                                                disabled={!formData.addrDist}
+                                                className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                                                placeholder="พิมพ์เพื่อค้นหาตำบล" 
+                                            />
+                                            {activeDropdown === 'sub' && formData.addrDist && (
+                                                <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto text-left">
+                                                    {availableSubs.filter(s => s.includes(formData.addrSub)).length > 0 ? (
+                                                        availableSubs.filter(s => s.includes(formData.addrSub)).map(s => (
+                                                            <li key={s} 
+                                                                onClick={() => handleChange({ target: { name: 'addrSub', value: s } })}
+                                                                className="p-3 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 border-b border-gray-100 last:border-0"
+                                                            >
+                                                                {s}
+                                                            </li>
+                                                        ))
+                                                    ) : (
+                                                        <li className="p-3 text-sm text-gray-500 text-center">ไม่พบข้อมูล</li>
+                                                    )}
+                                                </ul>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                                 
@@ -1412,7 +1533,7 @@
                             </div>
                         )}
 
-                        <div className="mt-8 sm:mt-10 flex flex-col-reverse sm:flex-row justify-between items-center border-t border-gray-100 pt-6 gap-3 sm:gap-0 safe-area-pb">
+                        <div className="mt-8 sm:mt-10 flex flex-col-reverse sm:flex-row justify-between items-center border-t border-gray-100 pt-6 gap-3 sm:gap-0 safe-area-pb shrink-0 pb-6 sm:pb-0">
                             {step > 1 ? (
                                 <button onClick={prevStep} disabled={isSubmitting} className="w-full sm:w-auto flex items-center justify-center text-gray-500 bg-gray-100 hover:bg-gray-200 px-6 py-3.5 sm:py-2.5 rounded-xl font-semibold transition disabled:opacity-50 text-[15px] sm:text-base">
                                     <i className="fas fa-chevron-left mr-2"></i> ย้อนกลับ
