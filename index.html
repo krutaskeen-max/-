@@ -508,7 +508,7 @@
                 if (!formData.addrProv) return "กรุณาเลือกหรือพิมพ์ชื่อจังหวัด";
                 if (!formData.addrDist) return "กรุณาเลือกหรือพิมพ์ชื่ออำเภอ/เขต";
                 if (!formData.addrSub) return "กรุณาเลือกหรือพิมพ์ชื่อตำบล/แขวง";
-                if (!formData.addrZip) return "ไม่พบรหัสไปรษณีย์ (กรุณาเลือกตำบลให้ถูกต้องระบบจะขึ้นให้อัตโนมัติ)";
+                if (!formData.addrZip) return "ไม่พบรหัสไปรษณีย์ (กรุณาเลือกตำบลให้ถูกต้องระบบจะขึ้นใหัตโนมัติ)";
                 return null;
             };
 
@@ -618,7 +618,7 @@
                 ];
 
                 return (
-                    <div className="flex justify-between items-center mb-6 sm:mb-8 relative px-2 sm:px-0">
+                    <div className="flex justify-between items-center relative px-2 sm:px-0">
                         <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-200 -z-10 transform -translate-y-1/2 rounded"></div>
                         <div className="absolute top-1/2 left-0 h-1 bg-brand-orange -z-10 transform -translate-y-1/2 rounded transition-all duration-300" 
                              style={{ width: `${((step - 1) / (steps.length - 1)) * 100}%` }}></div>
@@ -844,6 +844,7 @@
                         </div>
                     )}
 
+                    {/* Header Section */}
                     <div className="bg-[#0A192F] bg-gradient-to-br from-[#021024] via-[#0A2647] to-[#021024] p-6 sm:p-8 md:p-12 text-white flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-4 sm:gap-6 relative overflow-hidden border-b-[4px] sm:border-b-[6px] border-yellow-400 shrink-0">
                         <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-400 opacity-15 rounded-full blur-[100px] transform translate-x-1/4 -translate-y-1/4 pointer-events-none"></div>
                         <div className="absolute bottom-0 left-0 w-80 h-80 bg-white opacity-10 rounded-full blur-[80px] transform -translate-x-1/4 translate-y-1/4 pointer-events-none"></div>
@@ -872,9 +873,13 @@
                         </div>
                     </div>
 
-                    <div id="form-scroll-container" className="p-4 sm:p-6 md:p-10 flex-grow flex flex-col overflow-y-auto custom-scroll bg-white relative" style={{ WebkitOverflowScrolling: 'touch' }}>
+                    {/* เพิ่มส่วน Stepper ที่ล็อกไว้ด้านบน (Fixed header for steps) */}
+                    <div className="bg-white shrink-0 pt-5 sm:pt-8 pb-3 sm:pb-6 px-4 sm:px-8 md:px-12 border-b border-gray-100 z-20 shadow-[0_4px_10px_-4px_rgba(0,0,0,0.05)] relative">
                         <Stepper />
+                    </div>
 
+                    {/* Scrollable Form Section */}
+                    <div id="form-scroll-container" className="p-4 sm:p-6 md:p-10 flex-grow flex flex-col overflow-y-auto custom-scroll bg-white relative" style={{ WebkitOverflowScrolling: 'touch' }}>
                         <div className="flex-grow">
                         {/* ดาต้าลิสต์สำหรับแสดงตัวเลือกอาชีพผู้ปกครองยอดนิยม */}
                         <datalist id="occupation-list">
