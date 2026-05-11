@@ -123,7 +123,8 @@
 
             const getCachedData = () => {
                 try {
-                    const cached = sessionStorage.getItem('schoolAppCache_v13');
+                    // เปลี่ยนเป็น v14 เพื่อล้างความจำแคชเก่าทั้งหมด
+                    const cached = sessionStorage.getItem('schoolAppCache_v14');
                     if (cached) return JSON.parse(cached);
                 } catch(e) {}
                 return null; 
@@ -161,7 +162,8 @@
             React.useEffect(() => {
                 const fetchLogoFast = async () => {
                     try {
-                        const res = await fetch(`${GAS_URL}?action=getAppInfo`);
+                        // ใส่เวลาต่อท้ายป้องกันเบราว์เซอร์จำ URL
+                        const res = await fetch(`${GAS_URL}?action=getAppInfo&t=${new Date().getTime()}`);
                         const textRes = await res.text();
                         if (textRes.includes("System API Online")) return;
                         
@@ -185,7 +187,8 @@
                 const fetchFromGAS = async (isSilent = false) => {
                     if (!isSilent) setIsLoadingData(true);
                     try {
-                        const res = await fetch(`${GAS_URL}?action=getInitialData`);
+                        // ใส่เวลาต่อท้ายบังคับดึงข้อมูลใหม่ทุกครั้ง
+                        const res = await fetch(`${GAS_URL}?action=getInitialData&t=${new Date().getTime()}`, { cache: "no-store" });
                         const textRes = await res.text();
                         
                         if (textRes.includes("System API Online")) {
@@ -208,7 +211,7 @@
                                 schoolName: result.schoolName || 'ระบบขึ้นทะเบียนนักเรียน', schoolLogo: rawLogo
                             };
                             setInitialData(newData);
-                            sessionStorage.setItem('schoolAppCache_v13', JSON.stringify(newData));
+                            sessionStorage.setItem('schoolAppCache_v14', JSON.stringify(newData));
                         }
                     } catch (e) {
                         console.error("Failed to load initial data", e);
@@ -581,7 +584,7 @@
                     
                     const result = await response.json();
                     if(result.status === 'success') {
-                        sessionStorage.removeItem('schoolAppCache_v13');
+                        sessionStorage.removeItem('schoolAppCache_v14');
                         setIsSuccess(true);
                     } else if (result.status === 'duplicate') {
                         setDuplicateAlert({
@@ -953,10 +956,19 @@
                                                 <option value="">{(!formData.classLevel || !formData.room) ? 'เลือกชั้นและห้องก่อน' : 'เลือกรายชื่อนักเรียน...'}</option>
                                                 {initialData.students
                                                     .filter(s => {
-                                                        const shortClass = formData.classLevel.replace('มัธยมศึกษาปีที่ ', 'ม.');
-                                                        return s.classRoom === `${shortClass}/${formData.room}` || s.classRoom === `${formData.classLevel}/${formData.room}`;
+                                                        if (!s.classRoom) return false;
+                                                        const sheetRoom = String(s.classRoom).replace(/\s+/g, '');
+                                                        const formClass = String(formData.classLevel).replace(/\s+/g, '');
+                                                        const formRoom = String(formData.room).replace(/\s+/g, '');
+                                                        const shortClass = formClass.replace('มัธยมศึกษาปีที่', 'ม.');
+                                                        const numOnly = shortClass.replace('ม.', '');
+                                                        
+                                                        return sheetRoom === `${shortClass}/${formRoom}` || 
+                                                               sheetRoom === `${formClass}/${formRoom}` || 
+                                                               sheetRoom === `${numOnly}/${formRoom}` ||
+                                                               sheetRoom.includes(`${shortClass}/${formRoom}`);
                                                     })
-                                                    .map((s, idx) => <option key={s.studentCode || s.id || idx} value={s.name}>{s.name}</option>)
+                                                    .map((s, idx) => <option key={s.studentCode || s.id || idx} value={s.name}>{idx + 1}. {s.name}</option>)
                                                 }
                                             </select>
                                         </div>
