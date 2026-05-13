@@ -2,7 +2,6 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <!-- ล็อกการซูมหน้าจออัตโนมัติบนมือถือ ป้องกันหน้าต่างเด้งไปมาเวลากรอกฟอร์ม -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
     <title>ระบบบันทึกข้อมูลนักเรียน</title>
     
@@ -14,15 +13,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        /* ล็อกหน้าจอหลักไม่ให้ขยับแบบ 100% เพื่อให้ฟอร์มด้านในเลื่อนแทน (เหมือนแอปฯ จริง) */
         html, body {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
-            height: 100dvh; /* ล็อกความสูงหน้าต่างเท่าหน้าจอมือถือเป๊ะๆ */
-            overflow: hidden; /* ห้ามหน้าหลักเลื่อนเด็ดขาด */
-            position: fixed; /* ป้องกันการเด้ง (Overscroll) ใน iOS Safari */
+            height: 100dvh; 
+            overflow: hidden; 
+            position: fixed; 
         }
         
         body {
@@ -43,12 +41,10 @@
         .bg-brand-orange { background-color: #f97316; }
         .hover-bg-brand-orange:hover { background-color: #ea580c; }
         
-        /* เพิ่ม Safe Area ป้องกันปุ่มโดนขอบจอด้านล่างของ iPhone รบกวน */
         .safe-area-pb {
             padding-bottom: env(safe-area-inset-bottom, 20px);
         }
 
-        /* ตกแต่งแถบ Scrollbar ให้ดูสะอาดตา (แสดงผลเฉพาะบนคอมพิวเตอร์) */
         .custom-scroll::-webkit-scrollbar {
             width: 6px;
         }
@@ -63,17 +59,12 @@
             background: #94a3b8;
         }
 
-        /* ========================================================
-           การตั้งค่า UI แบบเจาะจง: ล็อกไอคอนซ้าย + ข้อความกึ่งกลาง
-           ======================================================== */
-        
-        /* 1. บังคับให้ข้อความในฟอร์มทุกฟอร์มอยู่กึ่งกลาง */
         input[type="text"], 
         input[type="tel"], 
         input[type="number"], 
         select {
             text-align: center !important;
-            text-align-last: center !important; /* จัดกึ่งกลางสำหรับดรอปดาวน์ */
+            text-align-last: center !important; 
         }
         
         input::placeholder {
@@ -81,21 +72,18 @@
             color: #9ca3af !important;
         }
 
-        /* 2. แก้ปัญหาไอคอนซ้อนทับข้อความ และจัดให้ padding ซ้ายขวาเท่ากัน 
-              เพื่อให้ text-center อยู่ตรงกลางกล่องแบบ 100% สมมาตร */
         .relative i.fas + input, 
         .relative i.fas + select {
-            padding-left: 3.25rem !important;  /* ล็อกพื้นที่ให้ไอคอนด้านซ้ายเสมอ */
-            padding-right: 3.25rem !important; /* ดันขอบขวาให้สมมาตร ข้อความจะได้กึ่งกลางเป๊ะ */
+            padding-left: 3.25rem !important;  
+            padding-right: 3.25rem !important; 
         }
 
-        /* 3. ล็อกไอคอนให้อยู่ซ้ายเสมอ ไม่ว่าหน้าจอจะขยายหรือหด (ป้องกัน Responsive ไปทับ) */
         .relative > i.fas {
             position: absolute !important;
-            left: 1.25rem !important; /* ชิดซ้ายเสมอ */
+            left: 1.25rem !important; 
             top: 50% !important;
             transform: translateY(-50%) !important;
-            pointer-events: none !important; /* ทะลุการคลิกไปที่ช่องกรอก */
+            pointer-events: none !important; 
             z-index: 10;
         }
     </style>
@@ -118,13 +106,14 @@
             const [duplicateAlert, setDuplicateAlert] = useState(null); 
             const [activeDropdown, setActiveDropdown] = useState(null);
             
-            // เพิ่ม State สำหรับจัดการ Pop-up แจ้งเตือนเมื่อเปิดหน้าแรก
             const [hasAcknowledgedWarning, setHasAcknowledgedWarning] = useState(false);
 
+            // ==========================================
+            // 🔥 เคลียร์แคชทั้งหมดเพื่อรับข้อมูลใหม่ (v15)
+            // ==========================================
             const getCachedData = () => {
                 try {
-                    // เปลี่ยนเป็น v14 เพื่อล้างความจำแคชเก่าทั้งหมด
-                    const cached = sessionStorage.getItem('schoolAppCache_v14');
+                    const cached = sessionStorage.getItem('schoolAppCache_v15');
                     if (cached) return JSON.parse(cached);
                 } catch(e) {}
                 return null; 
@@ -162,7 +151,7 @@
             React.useEffect(() => {
                 const fetchLogoFast = async () => {
                     try {
-                        // ใส่เวลาต่อท้ายป้องกันเบราว์เซอร์จำ URL
+                        // 🔥 ทะลวงแคช Browser ด้วย Timestamp
                         const res = await fetch(`${GAS_URL}?action=getAppInfo&t=${new Date().getTime()}`);
                         const textRes = await res.text();
                         if (textRes.includes("System API Online")) return;
@@ -187,7 +176,7 @@
                 const fetchFromGAS = async (isSilent = false) => {
                     if (!isSilent) setIsLoadingData(true);
                     try {
-                        // ใส่เวลาต่อท้ายบังคับดึงข้อมูลใหม่ทุกครั้ง
+                        // 🔥 ทะลวงแคช Browser ด้วย Timestamp
                         const res = await fetch(`${GAS_URL}?action=getInitialData&t=${new Date().getTime()}`, { cache: "no-store" });
                         const textRes = await res.text();
                         
@@ -211,7 +200,7 @@
                                 schoolName: result.schoolName || 'ระบบขึ้นทะเบียนนักเรียน', schoolLogo: rawLogo
                             };
                             setInitialData(newData);
-                            sessionStorage.setItem('schoolAppCache_v14', JSON.stringify(newData));
+                            sessionStorage.setItem('schoolAppCache_v15', JSON.stringify(newData));
                         }
                     } catch (e) {
                         console.error("Failed to load initial data", e);
@@ -956,17 +945,12 @@
                                                 <option value="">{(!formData.classLevel || !formData.room) ? 'เลือกชั้นและห้องก่อน' : 'เลือกรายชื่อนักเรียน...'}</option>
                                                 {initialData.students
                                                     .filter(s => {
-                                                        if (!s.classRoom) return false;
-                                                        const sheetRoom = String(s.classRoom).replace(/\s+/g, '');
-                                                        const formClass = String(formData.classLevel).replace(/\s+/g, '');
-                                                        const formRoom = String(formData.room).replace(/\s+/g, '');
-                                                        const shortClass = formClass.replace('มัธยมศึกษาปีที่', 'ม.');
-                                                        const numOnly = shortClass.replace('ม.', '');
-                                                        
-                                                        return sheetRoom === `${shortClass}/${formRoom}` || 
-                                                               sheetRoom === `${formClass}/${formRoom}` || 
-                                                               sheetRoom === `${numOnly}/${formRoom}` ||
-                                                               sheetRoom.includes(`${shortClass}/${formRoom}`);
+                                                        const shortClass = formData.classLevel.replace('มัธยมศึกษาปีที่ ', 'ม.');
+                                                        // ลบช่องว่างก่อนเช็ค
+                                                        const rawClassRoom = String(s.classRoom).replace(/\s+/g, '');
+                                                        const targetClassRoom = `${shortClass}/${formData.room}`.replace(/\s+/g, '');
+                                                        const fullTargetClassRoom = `${formData.classLevel}/${formData.room}`.replace(/\s+/g, '');
+                                                        return rawClassRoom === targetClassRoom || rawClassRoom === fullTargetClassRoom;
                                                     })
                                                     .map((s, idx) => <option key={s.studentCode || s.id || idx} value={s.name}>{idx + 1}. {s.name}</option>)
                                                 }
@@ -1184,14 +1168,14 @@
 
                         {step === 3 && (
                             <div className="fade-in space-y-6 sm:space-y-8">
-                                <h2 className="text-lg sm:text-xl font-bold text-brand-blue border-l-4 border-brand-orange pl-3">ส่วนที่ 3: ข้อมูลครอบครัว</h2>
+                                <h2 className="text-[16px] sm:text-lg font-bold text-brand-blue border-l-4 border-brand-orange pl-3">ส่วนที่ 3: ข้อมูลครอบครัว</h2>
                                 
                                 {/* --- ส่วนที่ 3.1 ข้อมูลบิดา --- */}
                                 <div>
-                                    <h3 className="text-[16px] sm:text-lg font-bold text-gray-700 mb-3 border-b pb-2"><i className="fas fa-male text-blue-500 mr-2"></i>ข้อมูลบิดา</h3>
+                                    <h3 className="text-[15px] sm:text-lg font-bold text-gray-700 mb-3 border-b pb-2"><i className="fas fa-male text-blue-500 mr-2"></i>ข้อมูลบิดา</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                                         <div className="md:col-span-1">
-                                            <label className="block text-sm font-semibold text-gray-700 mb-1">คำนำหน้า <span className="text-red-500">*</span> <span className="text-gray-400 font-normal hidden sm:inline">(ใส่ - หากไม่ทราบ)</span></label>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">คำนำหน้า <span className="text-red-500">*</span></label>
                                             <select name="fatherTitle" value={formData.fatherTitle} onChange={handleChange} className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition appearance-none">
                                                 <option value="">เลือก...</option>
                                                 <option value="นาย">นาย</option>
@@ -1206,12 +1190,12 @@
                                             <label className="block text-sm font-semibold text-gray-700 mb-1">ชื่อบิดา <span className="text-red-500">*</span></label>
                                             <div className="relative">
                                                 <i className="fas fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                                                <input type="text" name="fatherFirstName" value={formData.fatherFirstName} onChange={handleChange} className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="ระบุชื่อ (ใส่ - หากไม่ทราบ)" />
+                                                <input type="text" name="fatherFirstName" value={formData.fatherFirstName} onChange={handleChange} className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="ระบุชื่อ (หากไม่ทราบใส่ -)" />
                                             </div>
                                         </div>
                                         <div className="md:col-span-2">
                                             <label className="block text-sm font-semibold text-gray-700 mb-1">นามสกุลบิดา <span className="text-red-500">*</span></label>
-                                            <input type="text" name="fatherLastName" value={formData.fatherLastName} onChange={handleChange} className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="ระบุนามสกุล (ใส่ - หากไม่ทราบ)" />
+                                            <input type="text" name="fatherLastName" value={formData.fatherLastName} onChange={handleChange} className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="ระบุนามสกุล (หากไม่ทราบใส่ -)" />
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -1246,7 +1230,7 @@
                                     <h3 className="text-[16px] sm:text-lg font-bold text-gray-700 mb-3 border-b pb-2"><i className="fas fa-female text-pink-500 mr-2"></i>ข้อมูลมารดา</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                                         <div className="md:col-span-1">
-                                            <label className="block text-sm font-semibold text-gray-700 mb-1">คำนำหน้า <span className="text-red-500">*</span> <span className="text-gray-400 font-normal hidden sm:inline">(ใส่ - หากไม่ทราบ)</span></label>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">คำนำหน้า <span className="text-red-500">*</span></label>
                                             <select name="motherTitle" value={formData.motherTitle} onChange={handleChange} className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition appearance-none">
                                                 <option value="">เลือก...</option>
                                                 <option value="นาง">นาง</option>
@@ -1262,12 +1246,12 @@
                                             <label className="block text-sm font-semibold text-gray-700 mb-1">ชื่อมารดา <span className="text-red-500">*</span></label>
                                             <div className="relative">
                                                 <i className="fas fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                                                <input type="text" name="motherFirstName" value={formData.motherFirstName} onChange={handleChange} className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="ระบุชื่อ (ใส่ - หากไม่ทราบ)" />
+                                                <input type="text" name="motherFirstName" value={formData.motherFirstName} onChange={handleChange} className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="ระบุชื่อ (หากไม่ทราบใส่ -)" />
                                             </div>
                                         </div>
                                         <div className="md:col-span-2">
                                             <label className="block text-sm font-semibold text-gray-700 mb-1">นามสกุลมารดา <span className="text-red-500">*</span></label>
-                                            <input type="text" name="motherLastName" value={formData.motherLastName} onChange={handleChange} className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="ระบุนามสกุล (ใส่ - หากไม่ทราบ)" />
+                                            <input type="text" name="motherLastName" value={formData.motherLastName} onChange={handleChange} className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" placeholder="ระบุนามสกุล (หากไม่ทราบใส่ -)" />
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
