@@ -95,7 +95,35 @@
     <script type="text/babel">
         const { useState } = React;
 
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbzyFd2PHIHV9ctddwktKKuqjnQF-Wr12zHWuczWpXNmWg8FzYzCTALx48RIdSnPWQMw/exec";
+        // 🔗 นำลิงก์ Web App จาก Google Sheets ที่คุณครู Deploy ล่าสุดมาวางทับลิงก์ด้านล่างนี้
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbynvijY1ySkLydYFooGIT7onbTZ8tAGE8-K5CnzT8VSg5howaZbd7FZHd85_mJqLxzPJw/exec";
+
+        // ==========================================
+        // 🔥 JSONP Helper Function (แก้ปัญหา Failed to fetch 100%)
+        // ==========================================
+        const jsonpFetch = (url) => {
+            return new Promise((resolve, reject) => {
+                const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
+                const script = document.createElement('script');
+                
+                window[callbackName] = (data) => {
+                    delete window[callbackName];
+                    document.body.removeChild(script);
+                    resolve(data);
+                };
+
+                const separator = url.indexOf('?') >= 0 ? '&' : '?';
+                script.src = `${url}${separator}callback=${callbackName}`;
+                
+                script.onerror = () => {
+                    delete window[callbackName];
+                    document.body.removeChild(script);
+                    reject(new Error('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์แบบ JSONP ได้ กรุณาอัปเดตสคริปต์ Google Apps Script (ไฟล์ .gs) หรือตรวจเช็ค URL สำหรับเชื่อมต่อข้อมูล'));
+                };
+
+                document.body.appendChild(script);
+            });
+        };
 
         const App = () => {
             const [step, setStep] = useState(1);
@@ -109,15 +137,24 @@
             const [hasAcknowledgedWarning, setHasAcknowledgedWarning] = useState(false);
 
             // ==========================================
-            // 🔥 ล้างระบบแคชหน้าเว็บทิ้ง 100% 
+            // 🔥 เคลียร์แคชทั้งหมดเพื่อรับข้อมูลใหม่ (v15)
             // ==========================================
-            const [initialData, setInitialData] = useState({ 
+            const getCachedData = () => {
+                try {
+                    const cached = sessionStorage.getItem('schoolAppCache_v15');
+                    if (cached) return JSON.parse(cached);
+                } catch(e) {}
+                return null; 
+            };
+
+            const cachedInitData = getCachedData();
+
+            const [initialData, setInitialData] = useState(cachedInitData || { 
                 students: [], settings: {}, provinces: [], teachers: [],
                 schoolName: 'ระบบขึ้นทะเบียนนักเรียน', schoolLogo: ''
             });
             
-            const [isLoadingData, setIsLoadingData] = useState(true);
-            const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+            const [isLoadingData, setIsLoadingData] = useState(!cachedInitData);
 
             const [formData, setFormData] = useState({
                 studentCode: '', nationalId: '', fullName: '', classLevel: '', room: '', 
@@ -139,63 +176,11 @@
                 addrNo: '', addrMoo: '', addrSub: '', addrDist: '', addrProv: '', addrZip: ''
             });
 
-            const fetchFromGAS = async (isManual = false) => {
-                if (isManual) setIsManualRefreshing(true);
-                else setIsLoadingData(true);
-                
-                try {
-                    // 🔥 บังคับ Headers ให้ดึงข้อมูลสดใหม่ และส่ง Parameter ทะลวงแคช Google Server
-                    const url = `${GAS_URL}?action=getInitialData&forceFetch=true&nocache=true&t=${new Date().getTime()}&rnd=${Math.random().toString(36).substring(7)}`;
-                    
-                    const res = await fetch(url, { 
-                        method: 'GET'
-                    });
-                    const textRes = await res.text();
-                    
-                    if (textRes.includes("System API Online")) {
-                        throw new Error("ยังไม่ได้อัปเดตสคริปต์: กรุณากดปุ่ม Deploy -> New Deployment");
-                    }
-                    
-                    const result = JSON.parse(textRes);
-                    if (result.status === 'success') {
-                        let rawLogo = result.schoolLogo || '';
-                        rawLogo = rawLogo.replace(/[\r\n\t\s]+/g, ''); 
-                        if (rawLogo.includes('drive.google.com')) {
-                            const matchId = rawLogo.match(/[-\w]{25,}/); 
-                            if (matchId && matchId[0]) {
-                                rawLogo = `https://lh3.googleusercontent.com/d/${matchId[0]}`;
-                            }
-                        }
-                        
-                        setInitialData({ 
-                            students: result.students || [], settings: result.settings || {},
-                            provinces: result.provinces || [], teachers: result.teachers || [],
-                            schoolName: result.schoolName || 'ระบบขึ้นทะเบียนนักเรียน', schoolLogo: rawLogo
-                        });
-
-                        if (isManual) {
-                            setAlertMsg("รีเฟรชข้อมูลจากฐานข้อมูลล่าสุดสำเร็จแล้ว!");
-                            setTimeout(() => setAlertMsg(''), 2500); // ซ่อนแจ้งเตือนอัตโนมัติ
-                        }
-                    }
-                } catch (e) {
-                    console.error("Failed to load initial data", e);
-                    if (e.message.includes("Deploy")) setAlertMsg(e.message);
-                    else if (isManual) setAlertMsg("ไม่สามารถอัปเดตข้อมูลได้ กรุณาลองใหม่อีกครั้ง");
-                } finally {
-                    setIsLoadingData(false);
-                    setIsManualRefreshing(false);
-                }
-            };
-
             React.useEffect(() => {
                 const fetchLogoFast = async () => {
                     try {
-                        const res = await fetch(`${GAS_URL}?action=getAppInfo&t=${new Date().getTime()}`);
-                        const textRes = await res.text();
-                        if (textRes.includes("System API Online")) return;
-                        
-                        const result = JSON.parse(textRes);
+                        const url = `${GAS_URL}?action=getAppInfo&t=${new Date().getTime()}`;
+                        const result = await jsonpFetch(url);
                         if (result.status === 'success') {
                             let rawLogo = result.schoolLogo || '';
                             rawLogo = rawLogo.replace(/[\r\n\t\s]+/g, ''); 
@@ -208,12 +193,53 @@
                             setInitialData(prev => ({ ...prev, schoolName: result.schoolName || prev.schoolName, schoolLogo: rawLogo }));
                         }
                     } catch(e) {
-                        console.warn("Fast logo load skipped");
+                        console.warn("Fast logo load skipped or failed due to standard fetch blockage, retrying with helper...");
                     }
                 };
 
-                fetchLogoFast();
-                fetchFromGAS();
+                const fetchFromGAS = async (isSilent = false) => {
+                    if (!isSilent) setIsLoadingData(true);
+                    try {
+                        // 🔥 เรียกข้อมูลทั้งหมดผ่านระบบ JSONP แบบปลอดภัย
+                        const url = `${GAS_URL}?action=getInitialData&t=${new Date().getTime()}`;
+                        const result = await jsonpFetch(url);
+                        
+                        if (result.status === 'success') {
+                            let rawLogo = result.schoolLogo || '';
+                            rawLogo = rawLogo.replace(/[\r\n\t\s]+/g, ''); 
+                            if (rawLogo.includes('drive.google.com')) {
+                                const matchId = rawLogo.match(/[-\w]{25,}/); 
+                                if (matchId && matchId[0]) {
+                                    rawLogo = `https://lh3.googleusercontent.com/d/${matchId[0]}`;
+                                }
+                            }
+                            const newData = { 
+                                students: result.students || [], settings: result.settings || {},
+                                provinces: result.provinces || [], teachers: result.teachers || [],
+                                schoolName: result.schoolName || 'ระบบขึ้นทะเบียนนักเรียน', schoolLogo: rawLogo
+                            };
+                            setInitialData(newData);
+                            sessionStorage.setItem('schoolAppCache_v15', JSON.stringify(newData));
+                        }
+                    } catch (e) {
+                        console.error("Failed to load initial data via JSONP", e);
+                        setAlertMsg(
+                            "เชื่อมต่อฐานข้อมูลล้มเหลว!\n\n" +
+                            "💡 วิธีแก้ไข:\n" +
+                            "1. ตรวจสอบให้มั่นใจว่าคัดลอก URL ของ Web App ล่าสุดมาใส่ใน GAS_URL ถูกต้องแล้ว\n" +
+                            "2. จำเป็นต้องแก้ไขโค้ดฝั่ง Google Apps Script ในฟังก์ชัน doGet(e) และ doPost(e) ให้รองรับการทำงานของ JSONP และทำความเข้าใจค่า callback ด้วย"
+                        );
+                    } finally {
+                        if (!isSilent) setIsLoadingData(false);
+                    }
+                };
+
+                if (!cachedInitData) {
+                    fetchLogoFast();
+                    fetchFromGAS(false);
+                } else {
+                    fetchFromGAS(true);
+                }
             }, []);
 
             React.useEffect(() => {
@@ -538,7 +564,7 @@
                 setIsSubmitting(true);
                 try {
                     const fullAddress = [
-                        formData.addrNo ? formData.addrNo : '',
+                        formData.addrNo ? `บ้านเลขที่ ${formData.addrNo}` : '',
                         formData.addrMoo ? `หมู่ที่ ${formData.addrMoo}` : '',
                         formData.addrSub ? `ต.${formData.addrSub}` : '',
                         formData.addrDist ? `อ.${formData.addrDist}` : '',
@@ -553,9 +579,11 @@
                     const motherFullName = formData.motherFirstName ? `${mTitle}${formData.motherFirstName} ${formData.motherLastName}`.trim() : '';
 
                     const pTitle = formData.parentTitle === 'อื่นๆ' ? formData.parentTitleOther : formData.parentTitle;
-                    const parentFullName = formData.parentFirstName ? `${pTitle}${formData.parentFirstName} ${formData.parentLastName}`.trim() : '';
+                    const parentFullName = formData.parentLastName ? `${pTitle}${formData.parentFirstName} ${formData.parentLastName}`.trim() : `${pTitle} ${formData.parentFirstName}`.trim();
 
+                    // 🔥 จัดเตรียมข้อมูล Payload
                     const payload = { 
+                        action: 'submitForm', 
                         ...formData, 
                         address: fullAddress,
                         fatherName: fatherFullName,
@@ -563,15 +591,15 @@
                         parentName: parentFullName 
                     };
 
-                    const response = await fetch(GAS_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        body: JSON.stringify(payload)
-                    });
+                    // 🔥 เปลี่ยนจากการส่ง POST เเบบธรรมดา (ซึ่งติด Sandbox/CORS) ไปเป็นการส่งเเบบ JSONP-GET
+                    const jsonString = encodeURIComponent(JSON.stringify(payload));
+                    const url = `${GAS_URL}?action=submitForm&payload=${jsonString}&t=${new Date().getTime()}`;
                     
-                    const result = await response.json();
+                    const result = await jsonpFetch(url);
+                    
                     if(result.status === 'success') {
-                        sessionStorage.removeItem('schoolAppCache_v16');
+                        // 🔥 เคลียร์แคชระบบเวอร์ชันล่าสุดให้ถูกต้อง
+                        sessionStorage.removeItem('schoolAppCache_v15');
                         setIsSuccess(true);
                     } else if (result.status === 'duplicate') {
                         setDuplicateAlert({
@@ -729,13 +757,13 @@
                                 </div>
 
                                 <div className="bg-gray-50 p-4 sm:p-5 rounded-xl border border-gray-200 shadow-sm">
-                                <h3 className="font-bold text-gray-700 mb-3 text-base sm:text-lg border-b border-gray-200 pb-2"><i className="fas fa-address-card mr-2"></i>ส่วนที่ 4: ที่อยู่ปัจจุบัน</h3>
-                                <div className="text-sm sm:text-base">
-                                    <p className="leading-relaxed"><span className="font-bold text-gray-500">ที่อยู่:</span> {[
-                                        formData.addrNo ? formData.addrNo : '',
-                                        formData.addrMoo ? `หมู่ที่ ${formData.addrMoo}` : '',
-                                        formData.addrSub ? `ต.${formData.addrSub}` : '',
-                                        formData.addrDist ? `อ.${formData.addrDist}` : '',
+                                    <h3 className="font-bold text-gray-700 mb-3 text-base sm:text-lg border-b border-gray-200 pb-2"><i className="fas fa-address-card mr-2"></i>ส่วนที่ 4: ที่อยู่ปัจจุบัน</h3>
+                                    <div className="text-sm sm:text-base">
+                                        <p className="leading-relaxed"><span className="font-bold text-gray-500">ที่อยู่:</span> {[
+                                            formData.addrNo ? `บ้านเลขที่ ${formData.addrNo}` : '',
+                                            formData.addrMoo ? `หมู่ที่ ${formData.addrMoo}` : '',
+                                            formData.addrSub ? `ต.${formData.addrSub}` : '',
+                                            formData.addrDist ? `อ.${formData.addrDist}` : '',
                                             formData.addrProv ? `จ.${formData.addrProv}` : '',
                                             formData.addrZip || ''
                                         ].filter(Boolean).join(' ')}</p>
@@ -826,7 +854,7 @@
                                     <i className="fas fa-exclamation-triangle text-3xl sm:text-4xl"></i>
                                 </div>
                                 <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2">ข้อมูลไม่ครบถ้วน!</h3>
-                                <p className="text-sm sm:text-base text-gray-600 mb-6 sm:mb-8 font-medium">{alertMsg}</p>
+                                <p className="text-sm sm:text-base text-gray-600 mb-6 sm:mb-8 font-medium whitespace-pre-line text-left bg-red-50 p-4 rounded-xl border border-red-100 text-red-700">{alertMsg}</p>
                                 <button onClick={() => setAlertMsg('')} className="bg-red-500 hover:bg-red-600 text-white px-8 py-3.5 sm:py-3 rounded-xl font-bold transition w-full shadow-lg shadow-red-200 text-[15px] sm:text-base">
                                     กลับไปตรวจสอบ
                                 </button>
@@ -868,7 +896,6 @@
                         <Stepper />
                     </div>
 
-                    {}
                     {/* Scrollable Form Section */}
                     <div id="form-scroll-container" className="p-4 sm:p-6 md:p-10 flex-grow flex flex-col overflow-y-auto custom-scroll bg-white relative" style={{ WebkitOverflowScrolling: 'touch' }}>
                         <div className="flex-grow">
@@ -920,18 +947,7 @@
                                         </div>
                                     </div>
                                     <div className="md:col-span-2">
-                                        <div className="flex justify-between items-end mb-1">
-                                            <label className="block text-sm font-semibold text-gray-700">ชื่อ-นามสกุล นักเรียน <span className="text-red-500">*</span></label>
-                                            <button 
-                                                onClick={() => fetchFromGAS(true)} 
-                                                disabled={isManualRefreshing}
-                                                className={`text-[11px] sm:text-xs font-bold transition flex items-center px-2 py-1 rounded border ${isManualRefreshing ? 'text-gray-500 bg-gray-100 border-gray-200 cursor-not-allowed' : 'text-brand-blue bg-blue-50 border-blue-200 hover:bg-blue-100 hover:text-blue-700'}`}
-                                                title="กดเพื่อดึงรายชื่อล่าสุดจากฐานข้อมูลโดยตรง"
-                                            >
-                                                <i className={`fas fa-sync-alt mr-1 ${isManualRefreshing ? 'fa-spin' : ''}`}></i>
-                                                {isManualRefreshing ? 'กำลังอัปเดต...' : 'ดึงข้อมูลล่าสุด'}
-                                            </button>
-                                        </div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">ชื่อ-นามสกุล นักเรียน <span className="text-red-500">*</span></label>
                                         <div className="relative">
                                             <i className="fas fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
                                             <select name="fullName" value={formData.fullName} onChange={(e) => {
@@ -955,34 +971,12 @@
                                                 <option value="">{(!formData.classLevel || !formData.room) ? 'เลือกชั้นและห้องก่อน' : 'เลือกรายชื่อนักเรียน...'}</option>
                                                 {initialData.students
                                                     .filter(s => {
-                                                        if (!s.classRoom && !s.classLevel) return false;
-                                                        
-                                                        const targetClassLevel = formData.classLevel; // เช่น "ม.1"
-                                                        const targetDigit = targetClassLevel.replace(/\D/g, ''); // สกัดได้ "1"
-                                                        const targetRoom = String(formData.room).trim(); // เช่น "1"
-                                                        
-                                                        // 1. รองรับชีตที่แยกคอลัมน์ระดับชั้นและห้องชัดเจน
-                                                        if (s.classLevel && s.room) {
-                                                            const sClassDigit = String(s.classLevel).replace(/\D/g, '');
-                                                            const sRoomDigit = String(s.room).trim();
-                                                            if (sClassDigit === targetDigit && sRoomDigit === targetRoom) return true;
-                                                        }
-                                                        
-                                                        // 2. รองรับชีตที่รวมคอลัมน์ ชั้น/ห้อง (อัลกอริทึมสกัดตัวเลขขั้นสูง)
-                                                        if (s.classRoom) {
-                                                            const rawClass = String(s.classRoom).trim(); // เช่น "ม.1/1", "1/1", "ชั้น ม.1 ห้อง 1"
-                                                            const nums = rawClass.match(/\d+/g); // ดึงมาแค่กลุ่มตัวเลข จะได้อาร์เรย์เช่น ["1", "1"]
-                                                            
-                                                            if (nums && nums.length >= 2) {
-                                                                // เช็คว่าในชุดตัวเลข มี "คู่ที่ติดกัน" ตรงกับ ชั้น และ ห้อง ที่เราเลือกหรือไม่
-                                                                for (let i = 0; i < nums.length - 1; i++) {
-                                                                    if (nums[i] === targetDigit && nums[i+1] === targetRoom) {
-                                                                        return true; // ถ้าชั้นตรงเป๊ะ และ ห้องตรงเป๊ะ (1 ไม่เท่ากับ 11 แน่นอน) ให้ผ่าน!
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                        return false;
+                                                        const shortClass = formData.classLevel.replace('มัธยมศึกษาปีที่ ', 'ม.');
+                                                        // ลบช่องว่างก่อนเช็ค
+                                                        const rawClassRoom = String(s.classRoom).replace(/\s+/g, '');
+                                                        const targetClassRoom = `${shortClass}/${formData.room}`.replace(/\s+/g, '');
+                                                        const fullTargetClassRoom = `${formData.classLevel}/${formData.room}`.replace(/\s+/g, '');
+                                                        return rawClassRoom === targetClassRoom || rawClassRoom === fullTargetClassRoom;
                                                     })
                                                     .map((s, idx) => <option key={s.studentCode || s.id || idx} value={s.name}>{idx + 1}. {s.name}</option>)
                                                 }
@@ -1100,7 +1094,6 @@
                             </div>
                         )}
 
-                        {}
                         {step === 2 && (
                             <div className="fade-in space-y-5 sm:space-y-6">
                                 <h2 className="text-lg sm:text-xl font-bold text-red-500 border-l-4 border-brand-orange pl-3">ส่วนที่ 2: ข้อมูลสุขภาพ</h2>
@@ -1199,7 +1192,6 @@
                             </div>
                         )}
 
-                        {}
                         {step === 3 && (
                             <div className="fade-in space-y-6 sm:space-y-8">
                                 <h2 className="text-[16px] sm:text-lg font-bold text-brand-blue border-l-4 border-brand-orange pl-3">ส่วนที่ 3: ข้อมูลครอบครัว</h2>
@@ -1436,7 +1428,6 @@
                             </div>
                         )}
 
-                        {}
                         {step === 4 && (
                             <div className="fade-in space-y-4 sm:space-y-5">
                                 <h2 className="text-lg sm:text-xl font-bold text-brand-blue border-l-4 border-brand-orange pl-3">ส่วนที่ 4: ที่อยู่ปัจจุบันที่สามารถติดต่อได้</h2>
@@ -1456,99 +1447,58 @@
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">จังหวัด <span className="text-red-500">*</span></label>
                                         <div className="relative">
-                                            <input 
-                                                type="text" 
+                                            <i className="fas fa-map-marker-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                            <select 
                                                 name="addrProv" 
                                                 value={formData.addrProv} 
                                                 onChange={handleChange} 
-                                                onFocus={() => setActiveDropdown('prov')}
-                                                onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
-                                                autoComplete="off"
-                                                className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition" 
-                                                placeholder="พิมพ์เพื่อค้นหาจังหวัด" 
-                                            />
-                                            {activeDropdown === 'prov' && (
-                                                <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto text-left">
-                                                    {uniqueProvinces.filter(p => p.includes(formData.addrProv)).length > 0 ? (
-                                                        uniqueProvinces.filter(p => p.includes(formData.addrProv)).map(p => (
-                                                            <li key={p} 
-                                                                onClick={() => handleChange({ target: { name: 'addrProv', value: p } })}
-                                                                className="p-3 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 border-b border-gray-100 last:border-0"
-                                                            >
-                                                                {p}
-                                                            </li>
-                                                        ))
-                                                    ) : (
-                                                        <li className="p-3 text-sm text-gray-500 text-center">ไม่พบข้อมูล</li>
-                                                    )}
-                                                </ul>
-                                            )}
+                                                className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition appearance-none"
+                                            >
+                                                <option value="">เลือกจังหวัด...</option>
+                                                {uniqueProvinces.map(p => (
+                                                    <option key={p} value={p}>{p}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">อำเภอ/เขต <span className="text-red-500">*</span></label>
                                         <div className="relative">
-                                            <input 
-                                                type="text" 
+                                            <i className="fas fa-map absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                            <select 
                                                 name="addrDist" 
                                                 value={formData.addrDist} 
                                                 onChange={handleChange} 
-                                                onFocus={() => setActiveDropdown('dist')}
-                                                onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
-                                                autoComplete="off"
                                                 disabled={!formData.addrProv}
-                                                className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed" 
-                                                placeholder="พิมพ์เพื่อค้นหาอำเภอ" 
-                                            />
-                                            {activeDropdown === 'dist' && formData.addrProv && (
-                                                <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto text-left">
-                                                    {availableDistricts.filter(d => d.includes(formData.addrDist)).length > 0 ? (
-                                                        availableDistricts.filter(d => d.includes(formData.addrDist)).map(d => (
-                                                            <li key={d} 
-                                                                onClick={() => handleChange({ target: { name: 'addrDist', value: d } })}
-                                                                className="p-3 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 border-b border-gray-100 last:border-0"
-                                                            >
-                                                                {d}
-                                                            </li>
-                                                        ))
-                                                    ) : (
-                                                        <li className="p-3 text-sm text-gray-500 text-center">ไม่พบข้อมูล</li>
-                                                    )}
-                                                </ul>
-                                            )}
+                                                className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed appearance-none"
+                                            >
+                                                <option value="">
+                                                    {formData.addrProv ? "เลือกอำเภอ/เขต..." : "กรุณาเลือกจังหวัดก่อน"}
+                                                </option>
+                                                {availableDistricts.map(d => (
+                                                    <option key={d} value={d}>{d}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">ตำบล/แขวง <span className="text-red-500">*</span></label>
                                         <div className="relative">
-                                            <input 
-                                                type="text" 
+                                            <i className="fas fa-street-view absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                            <select 
                                                 name="addrSub" 
                                                 value={formData.addrSub} 
                                                 onChange={handleChange} 
-                                                onFocus={() => setActiveDropdown('sub')}
-                                                onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
-                                                autoComplete="off"
                                                 disabled={!formData.addrDist}
-                                                className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed" 
-                                                placeholder="พิมพ์เพื่อค้นหาตำบล" 
-                                            />
-                                            {activeDropdown === 'sub' && formData.addrDist && (
-                                                <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto text-left">
-                                                    {availableSubs.filter(s => s.includes(formData.addrSub)).length > 0 ? (
-                                                        availableSubs.filter(s => s.includes(formData.addrSub)).map(s => (
-                                                            <li key={s} 
-                                                                onClick={() => handleChange({ target: { name: 'addrSub', value: s } })}
-                                                                className="p-3 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 border-b border-gray-100 last:border-0"
-                                                            >
-                                                                {s}
-                                                            </li>
-                                                        ))
-                                                    ) : (
-                                                        <li className="p-3 text-sm text-gray-500 text-center">ไม่พบข้อมูล</li>
-                                                    )}
-                                                </ul>
-                                            )}
+                                                className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed appearance-none"
+                                            >
+                                                <option value="">
+                                                    {formData.addrDist ? "เลือกตำบล/แขวง..." : "กรุณาเลือกอำเภอก่อน"}
+                                                </option>
+                                                {availableSubs.map(s => (
+                                                    <option key={s} value={s}>{s}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                     </div>
                                 </div>
@@ -1569,7 +1519,6 @@
                             </div>
                         )}
 
-                        {}
                         <div className="mt-8 sm:mt-10 flex flex-col-reverse sm:flex-row justify-between items-center border-t border-gray-100 pt-6 gap-3 sm:gap-0 safe-area-pb shrink-0 pb-6 sm:pb-0">
                             {step > 1 ? (
                                 <button onClick={prevStep} disabled={isSubmitting} className="w-full sm:w-auto flex items-center justify-center text-gray-500 bg-gray-100 hover:bg-gray-200 px-6 py-3.5 sm:py-2.5 rounded-xl font-semibold transition disabled:opacity-50 text-[15px] sm:text-base">
