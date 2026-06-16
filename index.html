@@ -336,9 +336,15 @@
                 if (!formData.addrProv) return [];
                 return [...new Set(initialData.provinces.filter(p => p.prov === formData.addrProv).map(p => p.dist))].filter(Boolean).sort();
             }, [initialData.provinces, formData.addrProv]);
+            
+            // 🔥 ปรับแก้ logic: กรองตำบลโดยดึงเฉพาะ "ชื่อตำบล" และตัดเงื่อนไข p.sub === formData.addrSub ออก ป้องกันข้อมูลซ้ำซ้อนและว่างเปล่า
             const availableSubs = React.useMemo(() => {
                 if (!formData.addrProv || !formData.addrDist) return [];
-                return [...new Set(initialData.provinces.filter(p => p.prov === formData.addrProv && p.dist === formData.addrDist).map(p => p.sub))].filter(Boolean).sort();
+                return [...new Set(
+                    initialData.provinces
+                        .filter(p => p.prov === formData.addrProv && p.dist === formData.addrDist)
+                        .map(p => p.sub)
+                )].filter(Boolean).sort();
             }, [initialData.provinces, formData.addrProv, formData.addrDist]);
 
             const handleChange = (e) => {
@@ -564,7 +570,7 @@
                 setIsSubmitting(true);
                 try {
                     const fullAddress = [
-                        formData.addrNo ? `บ้านเลขที่ ${formData.addrNo}` : '',
+                        formData.addrNo ? `${formData.addrNo}` : '', // 🔥 ตัดคำว่า 'บ้านเลขที่ ' ออก ให้เหลือเพียงค่าใน formData.addrNo โดยตรง
                         formData.addrMoo ? `หมู่ที่ ${formData.addrMoo}` : '',
                         formData.addrSub ? `ต.${formData.addrSub}` : '',
                         formData.addrDist ? `อ.${formData.addrDist}` : '',
@@ -760,7 +766,7 @@
                                     <h3 className="font-bold text-gray-700 mb-3 text-base sm:text-lg border-b border-gray-200 pb-2"><i className="fas fa-address-card mr-2"></i>ส่วนที่ 4: ที่อยู่ปัจจุบัน</h3>
                                     <div className="text-sm sm:text-base">
                                         <p className="leading-relaxed"><span className="font-bold text-gray-500">ที่อยู่:</span> {[
-                                            formData.addrNo ? `บ้านเลขที่ ${formData.addrNo}` : '',
+                                            formData.addrNo ? `${formData.addrNo}` : '', // 🔥 ตัดคำว่า 'บ้านเลขที่ ' ออก ให้สอดคล้องกับตอนบันทึก
                                             formData.addrMoo ? `หมู่ที่ ${formData.addrMoo}` : '',
                                             formData.addrSub ? `ต.${formData.addrSub}` : '',
                                             formData.addrDist ? `อ.${formData.addrDist}` : '',
@@ -1140,7 +1146,7 @@
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-[fadeIn_0.3s_ease-out] bg-red-50 p-4 rounded-xl border border-red-100 mt-2">
                                             <div>
                                                 <label className="block text-sm font-semibold text-gray-700 mb-1">ระบุโรคประจำตัว <span className="text-red-500">*</span></label>
-                                                <input type="text" name="diseaseName" value={formData.diseaseName} onChange={handleChange} list="disease-list" className="w-full p-3.5 sm:p-3 bg-white border border-red-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none transition text-base sm:text-sm" placeholder="พิมพ์หรือเลือก..." />
+                                                <input type="text" name="diseaseName" value={formData.diseaseName} onChange={handleChange} list="disease-list" className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-white border border-red-200 rounded-xl focus:ring-2 focus:ring-red-400 outline-none transition text-base sm:text-sm" placeholder="พิมพ์หรือเลือก..." />
                                                 <datalist id="disease-list">
                                                     <option value="หอบหืด" />
                                                     <option value="ภูมิแพ้" />
@@ -1181,7 +1187,7 @@
                                                 <option value="ทางการมองเห็น" />
                                                 <option value="ทางการได้ยินหรือสื่อความหมาย" />
                                                 <option value="ทางการเคลื่อนไหวหรือทางร่างกาย" />
-                                                <option value="ทางจิตใจหรือพฤติกรรม" />
+                                                <option value="ทางจิตใจหรือพฤทีพรรม" />
                                                 <option value="ทางสติปัญญา" />
                                                 <option value="ทางการเรียนรู้" />
                                                 <option value="ออทิสติก" />
@@ -1550,7 +1556,7 @@
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render((<App />));
     </script>
 </body>
 </html>
