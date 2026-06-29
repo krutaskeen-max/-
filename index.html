@@ -156,11 +156,12 @@
             const [hasAcknowledgedWarning, setHasAcknowledgedWarning] = useState(false);
 
             // ==========================================
-            // 🔥 เคลียร์แคชทั้งหมดเพื่อรับข้อมูลใหม่ (v15)
+            // 🔥 เคลียร์แคชทั้งหมดเพื่อรับข้อมูลใหม่ (v16)
             // ==========================================
             const getCachedData = () => {
                 try {
-                    const cached = sessionStorage.getItem('schoolAppCache_v15');
+                    // 💡 อัปเดตเวอร์ชันแคชเป็น v16 เพื่อบังคับให้เบราว์เซอร์ล้างความจำเก่าทั้งหมด
+                    const cached = sessionStorage.getItem('schoolAppCache_v16');
                     if (cached) return JSON.parse(cached);
                 } catch(e) {}
                 return null; 
@@ -220,7 +221,8 @@
                     if (!isSilent) setIsLoadingData(true);
                     try {
                         // 🔥 เรียกข้อมูลทั้งหมดผ่านระบบ JSONP แบบปลอดภัย พร้อมระบบ Retry อัตโนมัติเมื่อเกิดชนกันของ Request
-                        const url = `${GAS_URL}?action=getInitialData&t=${new Date().getTime()}`;
+                        // 💡 เพิ่ม &forceFetch=true ท้ายลิงก์ บังคับให้ระบบ Google ดึงข้อมูลจาก Sheet ตรงๆ โดยไม่ใช้ Cache 
+                        const url = `${GAS_URL}?action=getInitialData&forceFetch=true&t=${new Date().getTime()}`;
                         const result = await jsonpFetch(url, 4, 1500);
                         
                         if (result.status === 'success') {
@@ -238,7 +240,8 @@
                                 schoolName: result.schoolName || 'ระบบขึ้นทะเบียนนักเรียน', schoolLogo: rawLogo
                             };
                             setInitialData(newData);
-                            sessionStorage.setItem('schoolAppCache_v15', JSON.stringify(newData));
+                            // 💡 บันทึกความจำลงในเวอร์ชันใหม่
+                            sessionStorage.setItem('schoolAppCache_v16', JSON.stringify(newData));
                         }
                     } catch (e) {
                         console.error("Failed to load initial data via JSONP", e);
@@ -350,7 +353,27 @@
                 formData.motherTitle, formData.motherTitleOther, formData.motherFirstName, formData.motherLastName, formData.motherTel, formData.motherOccupation, formData.motherIncome, formData.motherUnemployed
             ]);
 
-            const uniqueProvinces = React.useMemo(() => [...new Set(initialData.provinces.map(p => p.prov))].filter(Boolean).sort(), [initialData.provinces]);
+            // ==========================================
+            // 🔥 3. [แก้ไข] เพิ่มระบบรายชื่อจังหวัดสำรอง (Fallback) ครบทั้ง 77 จังหวัด
+            // ป้องกันปัญหาดึงข้อมูลไม่สำเร็จหรือ Sheet มีแต่จังหวัดเดียวได้อย่างสมบูรณ์
+            // ==========================================
+            const THAI_PROVINCES = [
+                "กรุงเทพมหานคร", "กระบี่", "กาญจนบุรี", "กาฬสินธุ์", "กำแพงเพชร", "ขอนแก่น", "จันทบุรี", "ฉะเชิงเทรา", "ชลบุรี", 
+                "ชัยนาท", "ชัยภูมิ", "ชุมพร", "เชียงราย", "เชียงใหม่", "ตรัง", "ตราด", "ตาก", "นครนายก", "นครปฐม", "นครพนม", 
+                "นครราชสีมา", "นครศรีธรรมราช", "นครสวรรค์", "นนทบุรี", "นราธิวาส", "น่าน", "บึงกาฬ", "บุรีรัมย์", "ปทุมธานี", 
+                "ประจวบคีรีขันธ์", "ปราจีนบุรี", "ปัตตานี", "พระนครศรีอยุธยา", "พะเยา", "พังงา", "พัทลุง", "พิจิตร", "พิษณุโลก", 
+                "เพชรบุรี", "เพชรบูรณ์", "แพร่", "ภูเก็ต", "มหาสารคาม", "มุกดาหาร", "แม่ฮ่องสอน", "ยโสธร", "ยะลา", "ร้อยเอ็ด", 
+                "ระนอง", "ระยอง", "ราชบุรี", "ลพบุรี", "ลำปาง", "ลำพูน", "เลย", "ศรีสะเกษ", "สกลนคร", "สงขลา", "สตูล", 
+                "สมุทรปราการ", "สมุทรสงคราม", "สมุทรสาคร", "สระแก้ว", "สระบุรี", "สิงห์บุรี", "สุโขทัย", "สุพรรณบุรี", "สุราษฎร์ธานี", 
+                "สุรินทร์", "หนองคาย", "หนองบัวลำภู", "อ่างทอง", "อำนาจเจริญ", "อุดรธานี", "อุตรดิตถ์", "อุทัยธานี", "อุบลราชธานี"
+            ];
+
+            const uniqueProvinces = React.useMemo(() => {
+                const loaded = [...new Set(initialData.provinces.map(p => p.prov))].filter(Boolean);
+                // 💡 ถ้ารายชื่อจังหวัดที่ดึงจาก Google Sheets มีน้อยกว่า 5 จังหวัด ให้ใช้ 77 จังหวัดมาตรฐานทันทีเพื่อป้องกันตัวเลือกว่างเปล่า
+                return loaded.length > 5 ? loaded.sort() : THAI_PROVINCES;
+            }, [initialData.provinces]);
+
             const availableDistricts = React.useMemo(() => {
                 if (!formData.addrProv) return [];
                 return [...new Set(initialData.provinces.filter(p => p.prov === formData.addrProv).map(p => p.dist))].filter(Boolean).sort();
@@ -624,7 +647,7 @@
                     
                     if(result.status === 'success') {
                         // 🔥 เคลียร์แคชระบบเวอร์ชันล่าสุดให้ถูกต้อง
-                        sessionStorage.removeItem('schoolAppCache_v15');
+                        sessionStorage.removeItem('schoolAppCache_v16');
                         setIsSuccess(true);
                     } else if (result.status === 'duplicate') {
                         setDuplicateAlert({
@@ -1420,7 +1443,7 @@
                                             <label className="block text-sm font-semibold text-gray-700 mb-1">เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span></label>
                                             <div className="relative">
                                                 <i className="fas fa-phone-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                                                <input type="tel" name="parentTel" value={formData.parentTel} onChange={(e) => handlePhoneChange(e, 'parentTel')} maxLength="12" className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition font-mono tracking-widest text-center" placeholder="xxx-xxx-xxxx" />
+                                                <input type="tel" name="parentTel" value={formData.parentTel} onChange={(e) => handlePhoneChange(e, 'parentTel')} maxLength="12" className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-brand-blue font-mono tracking-widest text-center" placeholder="xxx-xxx-xxxx" />
                                             </div>
                                         </div>
                                     </div>
@@ -1473,57 +1496,60 @@
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">จังหวัด <span className="text-red-500">*</span></label>
                                         <div className="relative">
                                             <i className="fas fa-map-marker-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                                            <select 
+                                            <input 
+                                                type="text"
                                                 name="addrProv" 
                                                 value={formData.addrProv} 
                                                 onChange={handleChange} 
-                                                className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition appearance-none"
-                                            >
-                                                <option value="">เลือกจังหวัด...</option>
+                                                list="prov-list"
+                                                className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition"
+                                                placeholder="พิมพ์หรือเลือกจังหวัด..."
+                                            />
+                                            <datalist id="prov-list">
                                                 {uniqueProvinces.map(p => (
                                                     <option key={p} value={p}>{p}</option>
                                                 ))}
-                                            </select>
+                                            </datalist>
                                         </div>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">อำเภอ/เขต <span className="text-red-500">*</span></label>
                                         <div className="relative">
                                             <i className="fas fa-map absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                                            <select 
+                                            <input 
+                                                type="text"
                                                 name="addrDist" 
                                                 value={formData.addrDist} 
                                                 onChange={handleChange} 
-                                                disabled={!formData.addrProv}
-                                                className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed appearance-none"
-                                            >
-                                                <option value="">
-                                                    {formData.addrProv ? "เลือกอำเภอ/เขต..." : "กรุณาเลือกจังหวัดก่อน"}
-                                                </option>
+                                                list="dist-list"
+                                                className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition"
+                                                placeholder="พิมพ์หรือเลือกอำเภอ/เขต..."
+                                            />
+                                            <datalist id="dist-list">
                                                 {availableDistricts.map(d => (
                                                     <option key={d} value={d}>{d}</option>
                                                 ))}
-                                            </select>
+                                            </datalist>
                                         </div>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">ตำบล/แขวง <span className="text-red-500">*</span></label>
                                         <div className="relative">
                                             <i className="fas fa-street-view absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                                            <select 
+                                            <input 
+                                                type="text"
                                                 name="addrSub" 
                                                 value={formData.addrSub} 
                                                 onChange={handleChange} 
-                                                disabled={!formData.addrDist}
-                                                className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed appearance-none"
-                                            >
-                                                <option value="">
-                                                    {formData.addrDist ? "เลือกตำบล/แขวง..." : "กรุณาเลือกอำเภอก่อน"}
-                                                </option>
+                                                list="sub-list"
+                                                className="w-full pl-12 p-3.5 sm:p-3 text-base sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-blue outline-none transition"
+                                                placeholder="พิมพ์หรือเลือกตำบล/แขวง..."
+                                            />
+                                            <datalist id="sub-list">
                                                 {availableSubs.map(s => (
                                                     <option key={s} value={s}>{s}</option>
                                                 ))}
-                                            </select>
+                                            </datalist>
                                         </div>
                                     </div>
                                 </div>
@@ -1535,9 +1561,9 @@
                                             type="text" 
                                             name="addrZip" 
                                             value={formData.addrZip} 
-                                            readOnly
-                                            className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-gray-100 border border-gray-300 rounded-xl outline-none font-bold text-gray-600 tracking-widest cursor-default" 
-                                            placeholder="อัตโนมัติเมื่อเลือกตำบล" 
+                                            onChange={handleChange}
+                                            className="w-full p-3.5 sm:p-3 text-base sm:text-sm bg-white border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-brand-blue font-bold text-gray-600 tracking-widest" 
+                                            placeholder="ระบุรหัสไปรษณีย์" 
                                         />
                                     </div>
                                 </div>
